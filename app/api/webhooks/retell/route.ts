@@ -6,7 +6,12 @@ import { Prisma } from '@prisma/client';
 // We use this to auto-sync call data and update outbound call statuses
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
 
   const { event, call } = body as {
     event: string;
@@ -158,8 +163,8 @@ export async function POST(request: NextRequest) {
           call.call_status === 'ended'
             ? 'COMPLETED'
             : call.call_status === 'error' || call.call_status === 'not_connected'
-            ? 'FAILED'
-            : undefined;
+              ? 'FAILED'
+              : undefined;
 
         if (newStatus) {
           await prisma.outboundCall.update({
