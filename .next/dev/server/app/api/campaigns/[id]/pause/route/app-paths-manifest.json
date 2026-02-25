@@ -1,0 +1,3 @@
+{
+  "/api/campaigns/[id]/pause/route": "app/api/campaigns/[id]/pause/route.js"
+}

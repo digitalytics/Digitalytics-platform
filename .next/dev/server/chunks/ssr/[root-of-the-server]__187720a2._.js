@@ -241,6 +241,12 @@ async function CampaignsPage() {
                 select: {
                     name: true
                 }
+            },
+            // Fetch only status so we can derive accurate counts, ignoring stale DB fields
+            outboundCalls: {
+                select: {
+                    status: true
+                }
             }
         }
     });
@@ -257,7 +263,7 @@ async function CampaignsPage() {
                                 children: "Campaigns"
                             }, void 0, false, {
                                 fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                                lineNumber: 26,
+                                lineNumber: 28,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -265,13 +271,13 @@ async function CampaignsPage() {
                                 children: "Manage bulk outbound calling campaigns."
                             }, void 0, false, {
                                 fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                                lineNumber: 27,
+                                lineNumber: 29,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                        lineNumber: 25,
+                        lineNumber: 27,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$app$2d$dir$2f$link$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["default"], {
@@ -282,25 +288,25 @@ async function CampaignsPage() {
                                     size: 14
                                 }, void 0, false, {
                                     fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                                    lineNumber: 31,
+                                    lineNumber: 33,
                                     columnNumber: 13
                                 }, this),
                                 " New Campaign"
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                            lineNumber: 30,
+                            lineNumber: 32,
                             columnNumber: 11
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                        lineNumber: 29,
+                        lineNumber: 31,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                lineNumber: 24,
+                lineNumber: 26,
                 columnNumber: 7
             }, this),
             campaigns.length === 0 ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -311,7 +317,7 @@ async function CampaignsPage() {
                         children: "No campaigns yet."
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                        lineNumber: 38,
+                        lineNumber: 40,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$app$2d$dir$2f$link$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["default"], {
@@ -323,47 +329,56 @@ async function CampaignsPage() {
                                     size: 14
                                 }, void 0, false, {
                                     fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                                    lineNumber: 41,
+                                    lineNumber: 43,
                                     columnNumber: 15
                                 }, this),
                                 " Create your first campaign"
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                            lineNumber: 40,
+                            lineNumber: 42,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                        lineNumber: 39,
+                        lineNumber: 41,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                lineNumber: 37,
+                lineNumber: 39,
                 columnNumber: 9
             }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4",
-                children: campaigns.map((campaign)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$campaigns$2f$campaign$2d$card$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["CampaignCard"], {
+                children: campaigns.map((campaign)=>{
+                    // Derive accurate counts from actual outbound call records
+                    const calledCount = campaign.outboundCalls.length;
+                    const connectedCount = campaign.outboundCalls.filter((c)=>c.status === 'COMPLETED').length;
+                    const failedCount = campaign.outboundCalls.filter((c)=>c.status === 'FAILED').length;
+                    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$campaigns$2f$campaign$2d$card$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["CampaignCard"], {
                         campaign: {
                             ...campaign,
-                            createdAt: campaign.createdAt.toISOString()
+                            createdAt: campaign.createdAt.toISOString(),
+                            calledCount,
+                            connectedCount,
+                            failedCount
                         }
                     }, campaign.id, false, {
                         fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                        lineNumber: 48,
-                        columnNumber: 13
-                    }, this))
+                        lineNumber: 55,
+                        columnNumber: 15
+                    }, this);
+                })
             }, void 0, false, {
                 fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-                lineNumber: 46,
+                lineNumber: 48,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/(dashboard)/campaigns/page.tsx",
-        lineNumber: 23,
+        lineNumber: 25,
         columnNumber: 5
     }, this);
 }

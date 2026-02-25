@@ -1,0 +1,3 @@
+{
+  "/api/campaigns/[id]/cancel/route": "app/api/campaigns/[id]/cancel/route.js"
+}

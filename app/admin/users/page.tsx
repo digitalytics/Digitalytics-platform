@@ -18,10 +18,17 @@ export default async function AdminUsersPage({
     },
   });
 
-  const agents = await prisma.agent.findMany({
+  const agentsRaw = await prisma.agent.findMany({
     where: { isActive: true },
     orderBy: { name: 'asc' },
   });
+
+  const agents = agentsRaw.map(a => ({
+    ...a,
+    actualCostRate: a.actualCostRate ? Number(a.actualCostRate) : null,
+    createdAt: a.createdAt.toISOString(),
+    updatedAt: a.updatedAt.toISOString(),
+  }));
 
   const serialized = users.map(u => ({
     id: u.id,

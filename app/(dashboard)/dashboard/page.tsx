@@ -11,7 +11,18 @@ export default async function DashboardPage() {
 
   // Fetch assigned agents
   let agentIds: string[];
-  let agents: Array<{ id: string; retellAgentId: string; name: string; description: string | null; isActive: boolean; phoneNumber: string | null }>;
+  let agents: Array<{
+    id: string;
+    retellAgentId: string;
+    name: string;
+    description: string | null;
+    isActive: boolean;
+    phoneNumber: string | null;
+  }>;
+
+  // For non-admin users, store assignedAt + customPrice per agent
+  type UserAgentMeta = { retellAgentId: string; assignedAt: Date; customPrice: number | null };
+  let userAgentMeta: UserAgentMeta[] = [];
 
   if (session.user.role === 'ADMIN') {
     agents = await prisma.agent.findMany({ orderBy: { name: 'asc' } });
@@ -23,20 +34,42 @@ export default async function DashboardPage() {
     });
     agents = userAgents.map(ua => ua.agent);
     agentIds = agents.filter(a => a.isActive).map(a => a.retellAgentId);
+    userAgentMeta = userAgents.map(ua => ({
+      retellAgentId: ua.agent.retellAgentId,
+      assignedAt: ua.assignedAt,
+      customPrice: ua.customPrice ? Number(ua.customPrice) : null,
+    }));
   }
 
-  const where = agentIds.length > 0 ? { agentId: { in: agentIds } } : { agentId: '' };
+  // Build the call filter — admins see all, users see only post-assignment calls
+  // This must match the calls page filter exactly so counts are consistent.
+  let callsWhere: Record<string, unknown>;
+  if (session.user.role === 'ADMIN') {
+    callsWhere = agentIds.length > 0 ? { agentId: { in: agentIds } } : { agentId: '' };
+  } else {
+    const activeUserAgentMeta = userAgentMeta.filter(m =>
+      agents.find(a => a.retellAgentId === m.retellAgentId && a.isActive)
+    );
+    callsWhere = activeUserAgentMeta.length > 0
+      ? {
+          OR: activeUserAgentMeta.map(m => ({
+            agentId: m.retellAgentId,
+            startTimestamp: { gte: m.assignedAt },
+          })),
+        }
+      : { agentId: '' };
+  }
 
   // Stats
   const [totalCalls, successfulCalls, durationAgg, recentCalls] = await Promise.all([
-    prisma.call.count({ where }),
-    prisma.call.count({ where: { ...where, callSuccessful: true } }),
+    prisma.call.count({ where: callsWhere }),
+    prisma.call.count({ where: { ...callsWhere, callSuccessful: true } }),
     prisma.call.aggregate({
-      where: { ...where, durationMs: { not: null } },
+      where: { ...callsWhere, durationMs: { not: null } },
       _avg: { durationMs: true },
     }),
     prisma.call.findMany({
-      where,
+      where: callsWhere,
       orderBy: { startTimestamp: 'desc' },
       take: 5,
       select: {
@@ -52,24 +85,74 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  // Per-agent call counts
-  const agentCallCounts = await prisma.call.groupBy({
-    by: ['agentId'],
-    where,
-    _count: { callId: true },
-    _max: { startTimestamp: true },
-  });
+  // Per-agent call counts — filter by assignedAt for non-admin users
+  let agentStats: Array<{
+    id: string;
+    retellAgentId: string;
+    name: string;
+    description: string | null;
+    isActive: boolean;
+    phoneNumber: string | null;
+    callCount: number;
+    lastCallAt: Date | null;
+    customPrice: number | null;
+  }>;
 
-  const agentStats = agents.map(agent => ({
-    id: agent.id,
-    retellAgentId: agent.retellAgentId,
-    name: agent.name,
-    description: agent.description,
-    isActive: agent.isActive,
-    phoneNumber: agent.phoneNumber ?? null,
-    callCount: agentCallCounts.find(a => a.agentId === agent.retellAgentId)?._count.callId || 0,
-    lastCallAt: agentCallCounts.find(a => a.agentId === agent.retellAgentId)?._max.startTimestamp || null,
-  }));
+  if (session.user.role === 'ADMIN') {
+    const agentCallCounts = await prisma.call.groupBy({
+      by: ['agentId'],
+      where: callsWhere,
+      _count: { callId: true },
+      _max: { startTimestamp: true },
+    });
+
+    agentStats = agents.map(agent => ({
+      id: agent.id,
+      retellAgentId: agent.retellAgentId,
+      name: agent.name,
+      description: agent.description,
+      isActive: agent.isActive,
+      phoneNumber: agent.phoneNumber ?? null,
+      callCount: agentCallCounts.find(a => a.agentId === agent.retellAgentId)?._count.callId || 0,
+      lastCallAt: agentCallCounts.find(a => a.agentId === agent.retellAgentId)?._max.startTimestamp || null,
+      customPrice: null,
+    }));
+  } else {
+    // Per-agent queries with assignedAt filter
+    const perAgentCounts = await Promise.all(
+      userAgentMeta.map(async meta => {
+        const agentWhere = {
+          agentId: meta.retellAgentId,
+          startTimestamp: { gte: meta.assignedAt },
+        };
+        const [count, lastCall] = await Promise.all([
+          prisma.call.count({ where: agentWhere }),
+          prisma.call.findFirst({
+            where: agentWhere,
+            orderBy: { startTimestamp: 'desc' },
+            select: { startTimestamp: true },
+          }),
+        ]);
+        return { retellAgentId: meta.retellAgentId, count, lastCallAt: lastCall?.startTimestamp ?? null };
+      })
+    );
+
+    agentStats = agents.map(agent => {
+      const meta = userAgentMeta.find(m => m.retellAgentId === agent.retellAgentId);
+      const counts = perAgentCounts.find(c => c.retellAgentId === agent.retellAgentId);
+      return {
+        id: agent.id,
+        retellAgentId: agent.retellAgentId,
+        name: agent.name,
+        description: agent.description,
+        isActive: agent.isActive,
+        phoneNumber: agent.phoneNumber ?? null,
+        callCount: counts?.count ?? 0,
+        lastCallAt: counts?.lastCallAt ?? null,
+        customPrice: meta?.customPrice ?? null,
+      };
+    });
+  }
 
   const stats = {
     totalCalls,

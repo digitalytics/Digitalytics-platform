@@ -85,6 +85,22 @@ async function POST(request) {
     }
     try {
         if (event === 'call_ended' || event === 'call_analyzed') {
+            // Resolve callSuccessful and userSentiment from top-level or nested call_analysis
+            const callSuccessful = call.call_successful ?? call.call_analysis?.call_successful ?? null;
+            const userSentiment = call.user_sentiment ?? call.call_analysis?.user_sentiment ?? null;
+            // Resolve agentName: use payload value or look up from local DB
+            let agentName = call.agent_name ?? null;
+            if (!agentName && call.agent_id) {
+                const localAgent = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].agent.findFirst({
+                    where: {
+                        retellAgentId: call.agent_id
+                    },
+                    select: {
+                        name: true
+                    }
+                });
+                agentName = localAgent?.name ?? null;
+            }
             // Upsert the call record
             await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].call.upsert({
                 where: {
@@ -93,26 +109,85 @@ async function POST(request) {
                 create: {
                     callId: call.call_id,
                     agentId: call.agent_id,
+                    agentName,
                     callStatus: call.call_status || 'ended',
                     startTimestamp: call.start_timestamp ? new Date(call.start_timestamp) : new Date(),
                     endTimestamp: call.end_timestamp ? new Date(call.end_timestamp) : null,
-                    durationMs: call.duration_ms || null,
-                    callSuccessful: call.call_successful ?? null,
-                    userSentiment: call.user_sentiment || null,
+                    durationMs: call.duration_ms ?? null,
+                    callSuccessful,
+                    userSentiment,
                     totalCost: call.total_cost ?? null,
                     metadata: call.metadata ? call.metadata : undefined,
+                    dynamicVariables: call.retell_llm_dynamic_variables ? call.retell_llm_dynamic_variables : undefined,
                     syncedAt: new Date()
                 },
                 update: {
+                    agentName: agentName ?? undefined,
                     callStatus: call.call_status || 'ended',
                     endTimestamp: call.end_timestamp ? new Date(call.end_timestamp) : undefined,
-                    durationMs: call.duration_ms || undefined,
-                    callSuccessful: call.call_successful ?? undefined,
-                    userSentiment: call.user_sentiment || undefined,
+                    durationMs: call.duration_ms ?? undefined,
+                    ...callSuccessful !== null ? {
+                        callSuccessful
+                    } : {},
+                    ...userSentiment ? {
+                        userSentiment
+                    } : {},
                     totalCost: call.total_cost ?? undefined,
                     syncedAt: new Date()
                 }
             });
+            // Upsert transcript if present
+            if (call.transcript || call.transcript_object) {
+                await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].transcript.upsert({
+                    where: {
+                        callId: call.call_id
+                    },
+                    create: {
+                        callId: call.call_id,
+                        transcript: call.transcript ?? null,
+                        transcriptObject: call.transcript_object ? call.transcript_object : undefined
+                    },
+                    update: {
+                        transcript: call.transcript ?? undefined,
+                        transcriptObject: call.transcript_object ? call.transcript_object : undefined
+                    }
+                });
+            }
+            // Upsert call analysis if present
+            const callAnalysisData = call.call_analysis;
+            const callSummary = call.call_summary ?? call.call_analysis?.call_summary ?? null;
+            if (callAnalysisData || callSummary) {
+                await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].callAnalysis.upsert({
+                    where: {
+                        callId: call.call_id
+                    },
+                    create: {
+                        callId: call.call_id,
+                        callAnalysis: callAnalysisData ? callAnalysisData : undefined,
+                        callSummary: callSummary ?? undefined
+                    },
+                    update: {
+                        callAnalysis: callAnalysisData ? callAnalysisData : undefined,
+                        callSummary: callSummary ?? undefined
+                    }
+                });
+            }
+            // Upsert recording if present
+            if (call.recording_url || call.stereo_recording_url || call.public_log_url) {
+                await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].recording.deleteMany({
+                    where: {
+                        callId: call.call_id
+                    }
+                });
+                await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].recording.create({
+                    data: {
+                        callId: call.call_id,
+                        recordingUrl: call.recording_url ?? null,
+                        stereoRecordingUrl: call.stereo_recording_url ?? null,
+                        publicLogUrl: call.public_log_url ?? null
+                    }
+                });
+            }
             // Update OutboundCall status if this was an outbound call
             const outboundCall = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].outboundCall.findUnique({
                 where: {
@@ -120,7 +195,10 @@ async function POST(request) {
                 }
             });
             if (outboundCall) {
-                const newStatus = call.call_status === 'ended' ? call.call_successful ? 'COMPLETED' : 'FAILED' : call.call_status === 'error' || call.call_status === 'not_connected' ? 'FAILED' : undefined;
+                // COMPLETED = call was answered and ended (regardless of whether the
+                // objective was achieved — call_successful tracks that separately).
+                // FAILED = call never connected (not_connected / error).
+                const newStatus = call.call_status === 'ended' ? 'COMPLETED' : call.call_status === 'error' || call.call_status === 'not_connected' ? 'FAILED' : undefined;
                 if (newStatus) {
                     await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].outboundCall.update({
                         where: {

@@ -82,7 +82,7 @@ async function AdminUsersPage({ searchParams }) {
             }
         }
     });
-    const agents = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].agent.findMany({
+    const agentsRaw = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].agent.findMany({
         where: {
             isActive: true
         },
@@ -90,6 +90,12 @@ async function AdminUsersPage({ searchParams }) {
             name: 'asc'
         }
     });
+    const agents = agentsRaw.map((a)=>({
+            ...a,
+            actualCostRate: a.actualCostRate ? Number(a.actualCostRate) : null,
+            createdAt: a.createdAt.toISOString(),
+            updatedAt: a.updatedAt.toISOString()
+        }));
     const serialized = users.map((u)=>({
             id: u.id,
             name: u.name,
@@ -113,7 +119,7 @@ async function AdminUsersPage({ searchParams }) {
                         children: "User Management"
                     }, void 0, false, {
                         fileName: "[project]/app/admin/users/page.tsx",
-                        lineNumber: 43,
+                        lineNumber: 50,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -121,13 +127,13 @@ async function AdminUsersPage({ searchParams }) {
                         children: "Approve registrations and manage user access"
                     }, void 0, false, {
                         fileName: "[project]/app/admin/users/page.tsx",
-                        lineNumber: 44,
+                        lineNumber: 51,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/admin/users/page.tsx",
-                lineNumber: 42,
+                lineNumber: 49,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$admin$2f$users$2d$page$2d$client$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["UsersPageClient"], {
@@ -136,13 +142,13 @@ async function AdminUsersPage({ searchParams }) {
                 initialTab: tab
             }, void 0, false, {
                 fileName: "[project]/app/admin/users/page.tsx",
-                lineNumber: 46,
+                lineNumber: 53,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/admin/users/page.tsx",
-        lineNumber: 41,
+        lineNumber: 48,
         columnNumber: 5
     }, this);
 }

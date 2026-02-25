@@ -405,6 +405,7 @@ async function DashboardPage() {
     // Fetch assigned agents
     let agentIds;
     let agents;
+    let userAgentMeta = [];
     if (session.user.role === 'ADMIN') {
         agents = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].agent.findMany({
             orderBy: {
@@ -423,28 +424,50 @@ async function DashboardPage() {
         });
         agents = userAgents.map((ua)=>ua.agent);
         agentIds = agents.filter((a)=>a.isActive).map((a)=>a.retellAgentId);
+        userAgentMeta = userAgents.map((ua)=>({
+                retellAgentId: ua.agent.retellAgentId,
+                assignedAt: ua.assignedAt,
+                customPrice: ua.customPrice ? Number(ua.customPrice) : null
+            }));
     }
-    const where = agentIds.length > 0 ? {
-        agentId: {
-            in: agentIds
-        }
-    } : {
-        agentId: ''
-    };
+    // Build the call filter — admins see all, users see only post-assignment calls
+    // This must match the calls page filter exactly so counts are consistent.
+    let callsWhere;
+    if (session.user.role === 'ADMIN') {
+        callsWhere = agentIds.length > 0 ? {
+            agentId: {
+                in: agentIds
+            }
+        } : {
+            agentId: ''
+        };
+    } else {
+        const activeUserAgentMeta = userAgentMeta.filter((m)=>agents.find((a)=>a.retellAgentId === m.retellAgentId && a.isActive));
+        callsWhere = activeUserAgentMeta.length > 0 ? {
+            OR: activeUserAgentMeta.map((m)=>({
+                    agentId: m.retellAgentId,
+                    startTimestamp: {
+                        gte: m.assignedAt
+                    }
+                }))
+        } : {
+            agentId: ''
+        };
+    }
     // Stats
     const [totalCalls, successfulCalls, durationAgg, recentCalls] = await Promise.all([
         __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.count({
-            where
+            where: callsWhere
         }),
         __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.count({
             where: {
-                ...where,
+                ...callsWhere,
                 callSuccessful: true
             }
         }),
         __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.aggregate({
             where: {
-                ...where,
+                ...callsWhere,
                 durationMs: {
                     not: null
                 }
@@ -454,7 +477,7 @@ async function DashboardPage() {
             }
         }),
         __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.findMany({
-            where,
+            where: callsWhere,
             orderBy: {
                 startTimestamp: 'desc'
             },
@@ -471,29 +494,77 @@ async function DashboardPage() {
             }
         })
     ]);
-    // Per-agent call counts
-    const agentCallCounts = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.groupBy({
-        by: [
-            'agentId'
-        ],
-        where,
-        _count: {
-            callId: true
-        },
-        _max: {
-            startTimestamp: true
-        }
-    });
-    const agentStats = agents.map((agent)=>({
-            id: agent.id,
-            retellAgentId: agent.retellAgentId,
-            name: agent.name,
-            description: agent.description,
-            isActive: agent.isActive,
-            phoneNumber: agent.phoneNumber ?? null,
-            callCount: agentCallCounts.find((a)=>a.agentId === agent.retellAgentId)?._count.callId || 0,
-            lastCallAt: agentCallCounts.find((a)=>a.agentId === agent.retellAgentId)?._max.startTimestamp || null
+    // Per-agent call counts — filter by assignedAt for non-admin users
+    let agentStats;
+    if (session.user.role === 'ADMIN') {
+        const agentCallCounts = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.groupBy({
+            by: [
+                'agentId'
+            ],
+            where: callsWhere,
+            _count: {
+                callId: true
+            },
+            _max: {
+                startTimestamp: true
+            }
+        });
+        agentStats = agents.map((agent)=>({
+                id: agent.id,
+                retellAgentId: agent.retellAgentId,
+                name: agent.name,
+                description: agent.description,
+                isActive: agent.isActive,
+                phoneNumber: agent.phoneNumber ?? null,
+                callCount: agentCallCounts.find((a)=>a.agentId === agent.retellAgentId)?._count.callId || 0,
+                lastCallAt: agentCallCounts.find((a)=>a.agentId === agent.retellAgentId)?._max.startTimestamp || null,
+                customPrice: null
+            }));
+    } else {
+        // Per-agent queries with assignedAt filter
+        const perAgentCounts = await Promise.all(userAgentMeta.map(async (meta)=>{
+            const agentWhere = {
+                agentId: meta.retellAgentId,
+                startTimestamp: {
+                    gte: meta.assignedAt
+                }
+            };
+            const [count, lastCall] = await Promise.all([
+                __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.count({
+                    where: agentWhere
+                }),
+                __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.findFirst({
+                    where: agentWhere,
+                    orderBy: {
+                        startTimestamp: 'desc'
+                    },
+                    select: {
+                        startTimestamp: true
+                    }
+                })
+            ]);
+            return {
+                retellAgentId: meta.retellAgentId,
+                count,
+                lastCallAt: lastCall?.startTimestamp ?? null
+            };
         }));
+        agentStats = agents.map((agent)=>{
+            const meta = userAgentMeta.find((m)=>m.retellAgentId === agent.retellAgentId);
+            const counts = perAgentCounts.find((c)=>c.retellAgentId === agent.retellAgentId);
+            return {
+                id: agent.id,
+                retellAgentId: agent.retellAgentId,
+                name: agent.name,
+                description: agent.description,
+                isActive: agent.isActive,
+                phoneNumber: agent.phoneNumber ?? null,
+                callCount: counts?.count ?? 0,
+                lastCallAt: counts?.lastCallAt ?? null,
+                customPrice: meta?.customPrice ?? null
+            };
+        });
+    }
     const stats = {
         totalCalls,
         successfulCalls,
@@ -513,7 +584,7 @@ async function DashboardPage() {
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                        lineNumber: 84,
+                        lineNumber: 167,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -521,20 +592,20 @@ async function DashboardPage() {
                         children: "Here's an overview of your AI agents"
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                        lineNumber: 87,
+                        lineNumber: 170,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                lineNumber: 83,
+                lineNumber: 166,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$dashboard$2f$dashboard$2d$stats$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["DashboardStats"], {
                 stats: stats
             }, void 0, false, {
                 fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                lineNumber: 90,
+                lineNumber: 173,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -544,7 +615,7 @@ async function DashboardPage() {
                         children: "Your Agents"
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                        lineNumber: 93,
+                        lineNumber: 176,
                         columnNumber: 9
                     }, this),
                     agentStats.length === 0 ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -554,24 +625,24 @@ async function DashboardPage() {
                             children: "No agents assigned yet. Contact your admin."
                         }, void 0, false, {
                             fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                            lineNumber: 96,
+                            lineNumber: 179,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                        lineNumber: 95,
+                        lineNumber: 178,
                         columnNumber: 11
                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$dashboard$2f$agent$2d$cards$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["AgentCards"], {
                         agents: agentStats
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                        lineNumber: 99,
+                        lineNumber: 182,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                lineNumber: 92,
+                lineNumber: 175,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -584,7 +655,7 @@ async function DashboardPage() {
                                 children: "Recent Calls"
                             }, void 0, false, {
                                 fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                                lineNumber: 105,
+                                lineNumber: 188,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("a", {
@@ -593,32 +664,32 @@ async function DashboardPage() {
                                 children: "View all →"
                             }, void 0, false, {
                                 fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                                lineNumber: 106,
+                                lineNumber: 189,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                        lineNumber: 104,
+                        lineNumber: 187,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$dashboard$2f$recent$2d$calls$2d$table$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["RecentCallsTable"], {
                         calls: recentCalls
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                        lineNumber: 110,
+                        lineNumber: 193,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-                lineNumber: 103,
+                lineNumber: 186,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/(dashboard)/dashboard/page.tsx",
-        lineNumber: 82,
+        lineNumber: 165,
         columnNumber: 5
     }, this);
 }

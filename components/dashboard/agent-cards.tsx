@@ -1,12 +1,12 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Phone, Calendar, Activity, Copy, Check } from 'lucide-react';
+import { Phone, Calendar, Activity, DollarSign } from 'lucide-react';
 import { staggerContainer, cardHover } from '@/lib/animations';
 import { Badge } from '@/components/ui/badge';
+import { CopyButton } from '@/components/dashboard/copy-button';
 import { formatDate } from '@/lib/utils';
 import Link from 'next/link';
-import { useState } from 'react';
 
 interface Agent {
   id: string;
@@ -17,26 +17,7 @@ interface Agent {
   phoneNumber: string | null;
   callCount: number;
   lastCallAt: Date | null;
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  return (
-    <button
-      onClick={handleCopy}
-      className="ml-1 p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition"
-      title="Copy number"
-    >
-      {copied ? <Check size={11} className="text-green-600" /> : <Copy size={11} />}
-    </button>
-  );
+  customPrice: number | null;
 }
 
 export function AgentCards({ agents }: { agents: Agent[] }) {
@@ -55,7 +36,7 @@ export function AgentCards({ agents }: { agents: Agent[] }) {
           whileHover="hover"
         >
           <Link
-            href={`/calls?agentId=${agent.retellAgentId}`}
+            href={`/agents/${agent.id}`}
             className="block bg-white rounded-xl border border-gray-200 p-5 hover:border-[#004D3E]/30 transition-colors"
           >
             <div className="flex items-start justify-between mb-3">
@@ -73,10 +54,17 @@ export function AgentCards({ agents }: { agents: Agent[] }) {
             )}
 
             {agent.phoneNumber && (
-              <div className="flex items-center gap-1 text-xs text-gray-500 mb-3 bg-gray-50 rounded-lg px-2.5 py-1.5">
+              <div className="flex items-center gap-1 text-xs text-gray-500 mb-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
                 <Phone size={11} className="text-[#004D3E]" />
                 <span className="font-mono">{agent.phoneNumber}</span>
                 <CopyButton text={agent.phoneNumber} />
+              </div>
+            )}
+
+            {agent.customPrice !== null && (
+              <div className="flex items-center gap-1 text-xs text-gray-500 mb-3 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                <DollarSign size={11} className="text-[#004D3E]" />
+                <span>${agent.customPrice.toFixed(4)} / min</span>
               </div>
             )}
 

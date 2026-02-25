@@ -16,6 +16,8 @@ export default async function CampaignsPage() {
     orderBy: { createdAt: 'desc' },
     include: {
       contactList: { select: { name: true } },
+      // Fetch only status so we can derive accurate counts, ignoring stale DB fields
+      outboundCalls: { select: { status: true } },
     },
   });
 
@@ -44,15 +46,24 @@ export default async function CampaignsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {campaigns.map(campaign => (
-            <CampaignCard
-              key={campaign.id}
-              campaign={{
-                ...campaign,
-                createdAt: campaign.createdAt.toISOString(),
-              }}
-            />
-          ))}
+          {campaigns.map(campaign => {
+            // Derive accurate counts from actual outbound call records
+            const calledCount = campaign.outboundCalls.length;
+            const connectedCount = campaign.outboundCalls.filter(c => c.status === 'COMPLETED').length;
+            const failedCount = campaign.outboundCalls.filter(c => c.status === 'FAILED').length;
+            return (
+              <CampaignCard
+                key={campaign.id}
+                campaign={{
+                  ...campaign,
+                  createdAt: campaign.createdAt.toISOString(),
+                  calledCount,
+                  connectedCount,
+                  failedCount,
+                }}
+              />
+            );
+          })}
         </div>
       )}
     </div>

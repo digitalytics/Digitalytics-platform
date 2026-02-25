@@ -66,111 +66,109 @@ export async function POST(
     },
   });
 
-  // Fire calls asynchronously (non-blocking) using a sequential background process
-  void fireCampaignCalls({
-    campaignId: id,
-    contacts: remainingContacts,
-    agentId: campaign.agentId,
-    agentRetellId: agent.retellAgentId,
-    fromNumber: agent.phoneNumber,
-    userId: campaign.userId,
-    delaySeconds: campaign.delaySeconds,
-    dynamicVariables: campaign.dynamicVariables as Record<string, unknown> | null,
+  // Fire all calls concurrently and await them fully before returning.
+  // Using Promise.all (not void) so the serverless function stays alive
+  // until every Retell API request has been dispatched.
+  const results = await Promise.all(
+    remainingContacts.map(contact => fireOneCall({
+      campaignId: id,
+      contact,
+      agentId: campaign.agentId,
+      agentRetellId: agent.retellAgentId,
+      fromNumber: agent.phoneNumber!,
+      userId: campaign.userId,
+      dynamicVariables: campaign.dynamicVariables as Record<string, unknown> | null,
+    }))
+  );
+
+  const succeeded = results.filter(r => r === 'ok').length;
+  const failed = results.filter(r => r === 'failed').length;
+
+  // Mark completed after all calls have been dispatched
+  await prisma.campaign.update({
+    where: { id },
+    data: {
+      status: 'COMPLETED',
+      completedAt: new Date(),
+      calledCount: remainingContacts.length,
+      failedCount: failed,
+    },
   });
 
-  return NextResponse.json({ started: true, contactsToCall: remainingContacts.length });
+  return NextResponse.json({ started: true, contactsToCall: remainingContacts.length, succeeded, failed });
 }
 
-async function fireCampaignCalls({
+async function fireOneCall({
   campaignId,
-  contacts,
+  contact,
   agentId,
   agentRetellId,
   fromNumber,
   userId,
-  delaySeconds,
   dynamicVariables,
 }: {
   campaignId: string;
-  contacts: Array<{ id: string; phone: string }>;
+  contact: { id: string; phone: string };
   agentId: string;
   agentRetellId: string;
   fromNumber: string;
   userId: string;
-  delaySeconds: number;
   dynamicVariables: Record<string, unknown> | null;
-}) {
-  for (const contact of contacts) {
-    // Check if campaign was paused/cancelled
-    const fresh = await prisma.campaign.findUnique({
-      where: { id: campaignId },
-      select: { status: true },
-    });
-    if (!fresh || fresh.status !== 'RUNNING') break;
+}): Promise<'ok' | 'failed'> {
+  // Create outbound call record
+  const outboundCall = await prisma.outboundCall.create({
+    data: {
+      userId,
+      agentId,
+      contactId: contact.id,
+      phoneNumber: contact.phone,
+      fromNumber,
+      status: 'CALLING',
+      campaignId,
+    },
+  });
 
-    // Create outbound call record
-    const outboundCall = await prisma.outboundCall.create({
-      data: {
-        userId,
-        agentId,
-        contactId: contact.id,
-        phoneNumber: contact.phone,
-        fromNumber,
-        status: 'CALLING',
-        campaignId,
-      },
-    });
-
-    // Fire Retell API call
-    try {
-      const res = await fetch(
-        `${process.env.RETELL_API_BASE_URL || 'https://api.retellai.com/v2'}/create-phone-call`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from_number: fromNumber,
-            to_number: contact.phone,
-            agent_id: agentRetellId,
-            ...(dynamicVariables ? { retell_llm_dynamic_variables: dynamicVariables } : {}),
-            metadata: { campaignId, outboundCallId: outboundCall.id, userId },
-          }),
-        }
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-        await prisma.outboundCall.update({
-          where: { id: outboundCall.id },
-          data: { retellCallId: data.call_id || null },
-        });
-      } else {
-        await prisma.outboundCall.update({
-          where: { id: outboundCall.id },
-          data: { status: 'FAILED' },
-        });
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data: { failedCount: { increment: 1 }, calledCount: { increment: 1 } },
-        });
+  try {
+    const res = await fetch(
+      `${process.env.RETELL_API_BASE_URL || 'https://api.retellai.com/v2'}/create-phone-call`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from_number: fromNumber,
+          to_number: contact.phone,
+          override_agent_id: agentRetellId,
+          ...(dynamicVariables ? { retell_llm_dynamic_variables: dynamicVariables } : {}),
+          metadata: { campaignId, outboundCallId: outboundCall.id, userId },
+        }),
       }
-    } catch {
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      await prisma.outboundCall.update({
+        where: { id: outboundCall.id },
+        data: { retellCallId: data.call_id || null },
+      });
+      return 'ok';
+    } else {
+      const errText = await res.text();
+      console.error(`Retell API error for ${contact.phone}:`, errText);
       await prisma.outboundCall.update({
         where: { id: outboundCall.id },
         data: { status: 'FAILED' },
       });
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: { failedCount: { increment: 1 }, calledCount: { increment: 1 } },
-      });
+      return 'failed';
     }
-
-    // Delay between calls
-    if (delaySeconds > 0) {
-      await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
-    }
+  } catch (err) {
+    console.error(`Failed to call ${contact.phone}:`, err);
+    await prisma.outboundCall.update({
+      where: { id: outboundCall.id },
+      data: { status: 'FAILED' },
+    });
+    return 'failed';
   }
 }

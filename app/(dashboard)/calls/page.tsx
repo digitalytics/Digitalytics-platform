@@ -19,38 +19,65 @@ export default async function CallsPage({
   const outcome = params.outcome;
 
   // Get accessible agent IDs
-  let allowedAgentIds: string[];
   let assignedAgents: Array<{ retellAgentId: string; name: string }>;
+
+  // Build the call filter where clause
+  let callWhere: Record<string, unknown>;
 
   if (session.user.role === 'ADMIN') {
     const agents = await prisma.agent.findMany({ orderBy: { name: 'asc' } });
     assignedAgents = agents;
-    allowedAgentIds = agents.map(a => a.retellAgentId);
+    const allowedAgentIds = agents.map(a => a.retellAgentId);
+
+    const filteredIds = agentId && allowedAgentIds.includes(agentId)
+      ? [agentId]
+      : allowedAgentIds;
+
+    callWhere = { agentId: { in: filteredIds } };
   } else {
     const userAgents = await prisma.userAgent.findMany({
       where: { userId: session.user.id },
       include: { agent: { select: { retellAgentId: true, name: true, isActive: true } } },
     });
     assignedAgents = userAgents.filter(ua => ua.agent.isActive).map(ua => ua.agent);
-    allowedAgentIds = assignedAgents.map(a => a.retellAgentId);
+
+    if (agentId) {
+      // Single agent filter: apply that agent's assignedAt
+      const targetUa = userAgents.find(ua => ua.agent.retellAgentId === agentId);
+      if (targetUa) {
+        callWhere = {
+          agentId,
+          startTimestamp: { gte: targetUa.assignedAt },
+        };
+      } else {
+        // Agent not accessible — return empty results
+        callWhere = { agentId: '' };
+      }
+    } else {
+      // All accessible agents with per-agent assignedAt filters
+      const activeUserAgents = userAgents.filter(ua => ua.agent.isActive);
+      if (activeUserAgents.length === 0) {
+        callWhere = { agentId: '' };
+      } else {
+        callWhere = {
+          OR: activeUserAgents.map(ua => ({
+            agentId: ua.agent.retellAgentId,
+            startTimestamp: { gte: ua.assignedAt },
+          })),
+        };
+      }
+    }
   }
 
-  const filteredIds = agentId && allowedAgentIds.includes(agentId)
-    ? [agentId]
-    : allowedAgentIds;
-
-  const where: Record<string, unknown> = {
-    agentId: { in: filteredIds },
-  };
-  if (status) where.callStatus = status;
-  if (outcome === 'true') where.callSuccessful = true;
-  if (outcome === 'false') where.callSuccessful = false;
+  if (status) callWhere.callStatus = status;
+  if (outcome === 'true') callWhere.callSuccessful = true;
+  if (outcome === 'false') callWhere.callSuccessful = false;
 
   const offset = (page - 1) * limit;
 
   const [calls, total] = await Promise.all([
     prisma.call.findMany({
-      where,
+      where: callWhere,
       orderBy: { startTimestamp: 'desc' },
       skip: offset,
       take: limit,
@@ -66,7 +93,7 @@ export default async function CallsPage({
         userSentiment: true,
       },
     }),
-    prisma.call.count({ where }),
+    prisma.call.count({ where: callWhere }),
   ]);
 
   return (

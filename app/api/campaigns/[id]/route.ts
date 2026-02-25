@@ -34,11 +34,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session || session.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
+  // Admins can delete any campaign; users can only delete their own
+  const where = session.user.role === 'ADMIN' ? { id } : { id, userId: session.user.id };
+  const campaign = await prisma.campaign.findFirst({ where });
+  if (!campaign) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
   await prisma.campaign.delete({ where: { id } });
   return NextResponse.json({ success: true });
 }
