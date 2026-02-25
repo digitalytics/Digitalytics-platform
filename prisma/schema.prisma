@@ -1,0 +1,361 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+}
+
+enum OutboundCallStatus {
+  PENDING
+  CALLING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum NotificationType {
+  CAMPAIGN_COMPLETED
+  CAMPAIGN_FAILED
+  CALL_FAILED
+  USER_PENDING
+  USER_APPROVED
+  AGENT_INACTIVE
+}
+
+// ─── Auth Models (NextAuth / Auth.js) ────────────────────────────────────────
+
+model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  emailVerified DateTime?  @map("email_verified")
+  passwordHash  String?    @map("password_hash")
+  name          String?
+  image         String?
+  role          Role       @default(USER)
+  status        UserStatus @default(PENDING)
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  // NextAuth relations
+  accounts      Account[]
+  sessions      Session[]
+
+  // App relations
+  assignedAgents UserAgent[]
+  contacts       Contact[]
+  contactLists   ContactList[]
+  outboundCalls  OutboundCall[]
+  campaigns      Campaign[]
+  notifications  Notification[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─── Agent Management ─────────────────────────────────────────────────────────
+
+model Agent {
+  id             String   @id @default(cuid())
+  retellAgentId  String   @unique @map("retell_agent_id") // matches Call.agentId
+  name           String
+  description    String?  @db.Text
+  webhookUrl     String?  @map("webhook_url") @db.Text
+  actualCostRate Decimal? @map("actual_cost_rate") @db.Decimal(10, 6) // per minute, admin-only
+  phoneNumber    String?  @map("phone_number") // E.164 format, e.g. +14155552671
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  assignedUsers UserAgent[]
+  outboundCalls OutboundCall[]
+
+  @@map("agents")
+}
+
+model UserAgent {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  agentId     String   @map("agent_id")
+  customPrice Decimal? @map("custom_price") @db.Decimal(10, 6) // markup price shown to user
+  assignedAt  DateTime @default(now()) @map("assigned_at")
+  assignedBy  String?  @map("assigned_by") // admin userId who performed assignment
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, agentId])
+  @@map("user_agents")
+}
+
+// ─── Call Data (existing, unchanged) ─────────────────────────────────────────
+
+// Main calls table - stores core call metadata
+model Call {
+  callId            String    @id @map("call_id")
+  agentId           String    @map("agent_id")
+  agentName         String?   @map("agent_name")
+  callStatus        String    @map("call_status") // registered | ongoing | ended | error | not_connected
+  startTimestamp    DateTime  @map("start_timestamp")
+  endTimestamp      DateTime? @map("end_timestamp")
+  durationMs        Int?      @map("duration_ms")
+  callSuccessful    Boolean?  @map("call_successful")
+  userSentiment     String?   @map("user_sentiment")
+
+  // Cost tracking - simplified!
+  totalCost         Decimal?  @map("total_cost") @db.Decimal(10, 6)
+  costDetails       Json?     @map("cost_details") @db.JsonB // Optional: full cost breakdown
+
+  // Latency tracking - simplified!
+  latencyDetails    Json?     @map("latency_details") @db.JsonB // Optional: full latency metrics
+
+  metadata          Json?     @db.JsonB
+  dynamicVariables  Json?     @map("dynamic_variables") @db.JsonB
+  syncedAt          DateTime  @default(now()) @map("synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  transcript       Transcript?
+  callAnalysis     CallAnalysis?
+  recordings       Recording[]
+
+  @@index([agentId], name: "idx_calls_agent_id")
+  @@index([startTimestamp(sort: Desc)], name: "idx_calls_start_timestamp")
+  @@index([agentId, startTimestamp], name: "idx_calls_agent_start")
+  @@index([syncedAt], name: "idx_calls_synced_at")
+  @@index([totalCost], name: "idx_calls_total_cost")
+  @@map("calls")
+}
+
+// Transcripts - one-to-one with calls
+model Transcript {
+  id               Int     @id @default(autoincrement())
+  callId           String  @unique @map("call_id")
+  transcript       String? @db.Text
+  transcriptObject Json?   @map("transcript_object") @db.JsonB
+
+  // Relationship
+  call Call @relation(fields: [callId], references: [callId], onDelete: Cascade)
+
+  @@map("transcripts")
+}
+
+// Call analysis - one-to-one with calls
+model CallAnalysis {
+  id           Int     @id @default(autoincrement())
+  callId       String  @unique @map("call_id")
+  callAnalysis Json?   @map("call_analysis") @db.JsonB
+  callSummary  String? @map("call_summary") @db.Text
+
+  // Relationship
+  call Call @relation(fields: [callId], references: [callId], onDelete: Cascade)
+
+  @@map("call_analysis")
+}
+
+// Recordings - one-to-many with calls
+model Recording {
+  id                  Int     @id @default(autoincrement())
+  callId              String  @map("call_id")
+  recordingUrl        String? @map("recording_url") @db.Text
+  stereoRecordingUrl  String? @map("stereo_recording_url") @db.Text
+  publicLogUrl        String? @map("public_log_url") @db.Text
+
+  // Relationship
+  call Call @relation(fields: [callId], references: [callId], onDelete: Cascade)
+
+  @@index([callId], name: "idx_recordings_call_id")
+  @@map("recordings")
+}
+
+// ─── Contact Management ────────────────────────────────────────────────────────
+
+model Contact {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  firstName String   @map("first_name")
+  lastName  String?  @map("last_name")
+  phone     String   // E.164 e.g. +1234567890
+  email     String?
+  company   String?
+  notes     String?  @db.Text
+  tags      String[] @default([])
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lists         ContactListMember[]
+  outboundCalls OutboundCall[]
+
+  @@index([userId])
+  @@map("contacts")
+}
+
+model ContactList {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  members   ContactListMember[]
+  campaigns Campaign[]
+
+  @@index([userId])
+  @@map("contact_lists")
+}
+
+model ContactListMember {
+  id            String   @id @default(cuid())
+  contactListId String   @map("contact_list_id")
+  contactId     String   @map("contact_id")
+  addedAt       DateTime @default(now()) @map("added_at")
+
+  contactList ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+  contact     Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([contactListId, contactId])
+  @@map("contact_list_members")
+}
+
+// ─── Outbound Calling ─────────────────────────────────────────────────────────
+
+model OutboundCall {
+  id           String             @id @default(cuid())
+  retellCallId String?            @unique @map("retell_call_id")
+  userId       String             @map("user_id")
+  agentId      String             @map("agent_id")
+  contactId    String?            @map("contact_id")
+  phoneNumber  String             @map("phone_number")
+  fromNumber   String?            @map("from_number")
+  status       OutboundCallStatus @default(PENDING)
+  campaignId   String?            @map("campaign_id")
+  initiatedAt  DateTime           @default(now()) @map("initiated_at")
+  metadata     Json?
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent    Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  contact  Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([campaignId])
+  @@map("outbound_calls")
+}
+
+// ─── Campaign Management ───────────────────────────────────────────────────────
+
+model Campaign {
+  id               String         @id @default(cuid())
+  userId           String         @map("user_id")
+  agentId          String         @map("agent_id")
+  contactListId    String         @map("contact_list_id")
+  name             String
+  description      String?
+  status           CampaignStatus @default(DRAFT)
+  scheduledAt      DateTime?      @map("scheduled_at")
+  startedAt        DateTime?      @map("started_at")
+  completedAt      DateTime?      @map("completed_at")
+  totalContacts    Int            @default(0) @map("total_contacts")
+  calledCount      Int            @default(0) @map("called_count")
+  connectedCount   Int            @default(0) @map("connected_count")
+  failedCount      Int            @default(0) @map("failed_count")
+  concurrency      Int            @default(1)
+  delaySeconds     Int            @default(5) @map("delay_seconds")
+  dynamicVariables Json?          @map("dynamic_variables")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactList   ContactList    @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  outboundCalls OutboundCall[]
+
+  @@index([userId])
+  @@map("campaigns")
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  link      String?
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@map("notifications")
+}

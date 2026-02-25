@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///E:/15.%20Digitalytics/digiweb-agents/app/%28auth%29/layout.tsx"],"sourcesContent":["export default function AuthLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <div className=\"min-h-screen bg-gradient-to-br from-[#004D3E] via-[#0a5f4a] to-[#166534] flex items-center justify-center p-4\">\n      {children}\n    </div>\n  );\n}\n"],"names":[],"mappings":";;;;;;AAAe,SAAS,WAAW,EAAE,QAAQ,EAAiC;IAC5E,qBACE,8OAAC;QAAI,WAAU;kBACZ;;;;;;AAGP"}}]
+}

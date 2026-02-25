@@ -1,0 +1,12 @@
+{
+  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/(dashboard)/calls/page": "app/(dashboard)/calls/page.js",
+  "/(dashboard)/campaigns/new/page": "app/(dashboard)/campaigns/new/page.js",
+  "/(dashboard)/campaigns/page": "app/(dashboard)/campaigns/page.js",
+  "/(dashboard)/contacts/page": "app/(dashboard)/contacts/page.js",
+  "/(dashboard)/dashboard/page": "app/(dashboard)/dashboard/page.js",
+  "/api/agents/route": "app/api/agents/route.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/api/calls/outbound/route": "app/api/calls/outbound/route.js",
+  "/api/notifications/route": "app/api/notifications/route.js"
+}
