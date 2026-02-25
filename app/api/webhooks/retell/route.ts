@@ -6,10 +6,13 @@ import { Prisma } from '@prisma/client';
 // We use this to auto-sync call data and update outbound call statuses
 
 export async function POST(request: NextRequest) {
+  console.log(`[webhook] incoming request from ${request.headers.get('x-forwarded-for') || 'unknown'}`);
+
   let body: unknown;
   try {
     body = await request.json();
   } catch {
+    console.log('[webhook] failed to parse JSON body');
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
@@ -48,6 +51,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    console.log(`[webhook] event=${event} call_id=${call?.call_id ?? 'missing'}`);
+
     if (event === 'call_ended' || event === 'call_analyzed') {
       // Resolve callSuccessful and userSentiment from top-level or nested call_analysis
       const callSuccessful = call.call_successful ?? call.call_analysis?.call_successful ?? null;
@@ -219,9 +224,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    console.log(`[webhook] processed successfully event=${event} call_id=${call?.call_id}`);
     return NextResponse.json({ received: true });
   } catch (err) {
-    console.error('Webhook processing error:', err);
+    console.error('[webhook] processing error:', err);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
