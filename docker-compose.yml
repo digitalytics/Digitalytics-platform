@@ -30,8 +30,12 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://postgres:root@db:5432/digitalytics
+      AUTH_TRUST_HOST: "true"
     ports:
       - "3000:3000"
+    volumes:
+      - app_data:/app/data
 
 volumes:
   postgres_data:
+  app_data:

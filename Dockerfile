@@ -34,15 +34,25 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+# Create dirs writable by nextjs user
+RUN mkdir -p /app/data /app/logs \
+    && chown nextjs:nodejs /app/data /app/logs
+
 # Copy standalone build and static files
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Copy Prisma client and schema for migrations at runtime
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# Copy full node_modules so all Prisma/tsx transitive deps are available
+# (Selective copying keeps breaking due to missing transitive dependencies)
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copy prisma schema, scripts, and source for migrations + seed + sync
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
 # Copy entrypoint script
 COPY entrypoint.sh ./entrypoint.sh
