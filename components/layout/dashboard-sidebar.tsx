@@ -1,14 +1,15 @@
 'use client';
 
 import { signOut } from 'next-auth/react';
-import { LayoutDashboard, Phone, LogOut, Users, Megaphone } from 'lucide-react';
+import { LayoutDashboard, Phone, LogOut, Users, Megaphone, Receipt } from 'lucide-react';
 import { Sidebar } from '@/components/layout/sidebar';
 
 const navItems = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Contacts', href: '/contacts', icon: Users },
-  { label: 'Campaigns', href: '/campaigns', icon: Megaphone },
-  { label: 'Call History', href: '/calls', icon: Phone },
+  { label: 'Dashboard',    href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Contacts',     href: '/contacts',  icon: Users },
+  { label: 'Campaigns',    href: '/campaigns', icon: Megaphone },
+  { label: 'Call History', href: '/calls',     icon: Phone },
+  { label: 'Billing',      href: '/billing',   icon: Receipt },
 ];
 
 interface User {

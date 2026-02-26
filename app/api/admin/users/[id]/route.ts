@@ -7,8 +7,10 @@ const updateUserSchema = z.object({
   status: z.enum(['PENDING', 'ACTIVE', 'INACTIVE']).optional(),
   role: z.enum(['ADMIN', 'USER']).optional(),
   agents: z.array(z.object({
-    agentId: z.string(),
+    agentId:     z.string(),
     customPrice: z.number().optional(),
+    setupFee:    z.number().optional(),
+    monthlyFee:  z.number().optional(),
   })).optional(),
 });
 
@@ -57,10 +59,12 @@ export async function PATCH(
         data: agentRecords.map(agent => {
           const input = agents.find(a => a.agentId === agent.retellAgentId);
           return {
-            userId: id,
-            agentId: agent.id,
+            userId:      id,
+            agentId:     agent.id,
             customPrice: input?.customPrice ?? null,
-            assignedBy: session.user.id,
+            setupFee:    input?.setupFee    ?? null,
+            monthlyFee:  input?.monthlyFee  ?? null,
+            assignedBy:  session.user.id,
           };
         }),
       });

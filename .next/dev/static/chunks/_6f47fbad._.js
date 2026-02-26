@@ -13,6 +13,8 @@ __turbopack_context__.s([
     ()=>formatDateTime,
     "formatDuration",
     ()=>formatDuration,
+    "formatMoney",
+    ()=>formatMoney,
     "formatSentiment",
     ()=>formatSentiment,
     "getSentimentColor",
@@ -58,6 +60,10 @@ function formatDateTime(date) {
 function formatCost(cost) {
     if (cost == null) return '—';
     return `$${Number(cost).toFixed(4)}`;
+}
+function formatMoney(amount) {
+    if (amount == null) return '—';
+    return `$${Number(amount).toFixed(2)}`;
 }
 function formatSentiment(sentiment) {
     if (!sentiment) return '—';
