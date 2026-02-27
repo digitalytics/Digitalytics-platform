@@ -1,9 +1,11 @@
 {
   "/(dashboard)/billing/page": "app/(dashboard)/billing/page.js",
-  "/(dashboard)/calls/page": "app/(dashboard)/calls/page.js",
-  "/(dashboard)/dashboard/page": "app/(dashboard)/dashboard/page.js",
-  "/admin/agents/page": "app/admin/agents/page.js",
-  "/admin/users/page": "app/admin/users/page.js",
+  "/(dashboard)/contacts/page": "app/(dashboard)/contacts/page.js",
+  "/admin/billing/[userId]/page": "app/admin/billing/[userId]/page.js",
+  "/admin/billing/page": "app/admin/billing/page.js",
+  "/api/agents/route": "app/api/agents/route.js",
+  "/api/billing/invoice/generate/route": "app/api/billing/invoice/generate/route.js",
+  "/api/calls/outbound/route": "app/api/calls/outbound/route.js",
   "/api/notifications/route": "app/api/notifications/route.js",
   "/api/webhooks/retell/route": "app/api/webhooks/retell/route.js"
 }

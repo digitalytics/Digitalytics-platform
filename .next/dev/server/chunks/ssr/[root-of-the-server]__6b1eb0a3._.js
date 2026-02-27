@@ -94,6 +94,44 @@ async function BillingPage() {
             assignedAt: 'asc'
         }
     });
+    // Current month period for usage calculation
+    const now = new Date();
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    // Fetch current-month call usage per agent in parallel
+    const usageByAgent = await Promise.all(userAgents.map(async (ua)=>{
+        if (!ua.customPrice) return {
+            retellAgentId: ua.agent.retellAgentId,
+            minutes: 0,
+            cost: 0
+        };
+        const agg = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.aggregate({
+            where: {
+                agentId: ua.agent.retellAgentId,
+                startTimestamp: {
+                    gte: ua.assignedAt > periodStart ? ua.assignedAt : periodStart,
+                    lte: periodEnd
+                },
+                durationMs: {
+                    not: null
+                }
+            },
+            _sum: {
+                durationMs: true
+            }
+        });
+        const minutes = (agg._sum.durationMs ?? 0) / 60000;
+        const cost = Math.round(minutes * Number(ua.customPrice) * 100) / 100;
+        return {
+            retellAgentId: ua.agent.retellAgentId,
+            minutes,
+            cost
+        };
+    }));
+    const usageMap = Object.fromEntries(usageByAgent.map((u)=>[
+            u.retellAgentId,
+            u
+        ]));
     const agents = userAgents.map((ua)=>({
             retellAgentId: ua.agent.retellAgentId,
             name: ua.agent.name,
@@ -103,7 +141,49 @@ async function BillingPage() {
             setupFee: ua.setupFee ? Number(ua.setupFee) : null,
             setupFeePaid: ua.setupFeePaid,
             monthlyFee: ua.monthlyFee ? Number(ua.monthlyFee) : null,
-            customPrice: ua.customPrice ? Number(ua.customPrice) : null
+            customPrice: ua.customPrice ? Number(ua.customPrice) : null,
+            usageMinutes: usageMap[ua.agent.retellAgentId]?.minutes ?? 0,
+            usageCost: usageMap[ua.agent.retellAgentId]?.cost ?? 0
+        }));
+    // Fetch all non-cancelled invoices for this user, newest first
+    const invoicesRaw = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].invoice.findMany({
+        where: {
+            userId: session.user.id,
+            status: {
+                not: 'CANCELLED'
+            }
+        },
+        include: {
+            lineItems: {
+                orderBy: {
+                    type: 'asc'
+                }
+            }
+        },
+        orderBy: {
+            periodStart: 'desc'
+        }
+    });
+    const invoices = invoicesRaw.map((inv)=>({
+            id: inv.id,
+            invoiceNumber: inv.invoiceNumber,
+            periodStart: inv.periodStart.toISOString(),
+            periodEnd: inv.periodEnd.toISOString(),
+            status: inv.status,
+            subtotal: Number(inv.subtotal),
+            total: Number(inv.total),
+            paidAt: inv.paidAt?.toISOString() ?? null,
+            createdAt: inv.createdAt.toISOString(),
+            lineItems: inv.lineItems.map((li)=>({
+                    id: li.id,
+                    type: li.type,
+                    agentId: li.agentId,
+                    agentName: li.agentName,
+                    description: li.description,
+                    quantity: Number(li.quantity),
+                    unitPrice: Number(li.unitPrice),
+                    total: Number(li.total)
+                }))
         }));
     const totalMonthly = agents.reduce((sum, a)=>sum + (a.monthlyFee ?? 0), 0);
     const outstandingSetup = agents.filter((a)=>!a.setupFeePaid).reduce((sum, a)=>sum + (a.setupFee ?? 0), 0);
@@ -118,37 +198,38 @@ async function BillingPage() {
                         children: "Billing"
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/billing/page.tsx",
-                        lineNumber: 46,
+                        lineNumber: 101,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                         className: "text-gray-500 mt-1",
-                        children: "Cost breakdown for your assigned agents"
+                        children: "Your invoices and cost breakdown"
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/billing/page.tsx",
-                        lineNumber: 47,
+                        lineNumber: 102,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/(dashboard)/billing/page.tsx",
-                lineNumber: 45,
+                lineNumber: 100,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$dashboard$2f$billing$2d$page$2d$client$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["BillingPageClient"], {
                 agents: agents,
+                invoices: invoices,
                 totalMonthly: totalMonthly,
                 outstandingSetup: outstandingSetup,
                 activeCount: activeCount
             }, void 0, false, {
                 fileName: "[project]/app/(dashboard)/billing/page.tsx",
-                lineNumber: 49,
+                lineNumber: 104,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/(dashboard)/billing/page.tsx",
-        lineNumber: 44,
+        lineNumber: 99,
         columnNumber: 5
     }, this);
 }
