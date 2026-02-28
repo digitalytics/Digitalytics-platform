@@ -38,9 +38,12 @@ export default async function AdminUsersPage({
     status: u.status,
     createdAt: u.createdAt.toISOString(),
     agents: u.assignedAgents.map(ua => ({
-      name: ua.agent.name,
+      name:         ua.agent.name,
       retellAgentId: ua.agent.retellAgentId,
-      customPrice: ua.customPrice ? Number(ua.customPrice) : null,
+      customPrice:  ua.customPrice  ? Number(ua.customPrice)  : null,
+      setupFee:     ua.setupFee     ? Number(ua.setupFee)     : null,
+      monthlyFee:   ua.monthlyFee   ? Number(ua.monthlyFee)   : null,
+      setupFeePaid: ua.setupFeePaid,
     })),
   }));
 

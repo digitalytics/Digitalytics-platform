@@ -1,14 +1,15 @@
 'use client';
 
 import { signOut } from 'next-auth/react';
-import { LayoutDashboard, Users, Bot, BarChart3, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Bot, BarChart3, LogOut, Receipt } from 'lucide-react';
 import { Sidebar } from '@/components/layout/sidebar';
 
 const adminNavItems = [
-  { label: 'Overview', href: '/admin', icon: LayoutDashboard },
-  { label: 'Users', href: '/admin/users', icon: Users },
-  { label: 'Agents', href: '/admin/agents', icon: Bot },
-  { label: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
+  { label: 'Overview',  href: '/admin',           icon: LayoutDashboard },
+  { label: 'Users',     href: '/admin/users',      icon: Users },
+  { label: 'Agents',    href: '/admin/agents',     icon: Bot },
+  { label: 'Analytics', href: '/admin/analytics',  icon: BarChart3 },
+  { label: 'Billing',   href: '/admin/billing',    icon: Receipt },
 ];
 
 interface User {

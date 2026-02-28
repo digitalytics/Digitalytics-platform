@@ -258,6 +258,8 @@ function UsersPageClient({ users, agents, initialTab }) {
     const [assignModal, setAssignModal] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(null);
     const [selectedAgents, setSelectedAgents] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])({});
     const [customPrices, setCustomPrices] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])({});
+    const [setupFees, setSetupFees] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])({});
+    const [monthlyFees, setMonthlyFees] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])({});
     const [isSaving, setIsSaving] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(false);
     const filtered = users.filter((u)=>{
         if (activeTab === 'all') return u.role !== 'ADMIN';
@@ -266,13 +268,19 @@ function UsersPageClient({ users, agents, initialTab }) {
     const openAssignModal = (user)=>{
         const sel = {};
         const prices = {};
+        const setup = {};
+        const monthly = {};
         agents.forEach((a)=>{
             const assigned = user.agents.find((ua)=>ua.retellAgentId === a.retellAgentId);
             sel[a.retellAgentId] = !!assigned;
             if (assigned?.customPrice) prices[a.retellAgentId] = String(assigned.customPrice);
+            if (assigned?.setupFee) setup[a.retellAgentId] = String(assigned.setupFee);
+            if (assigned?.monthlyFee) monthly[a.retellAgentId] = String(assigned.monthlyFee);
         });
         setSelectedAgents(sel);
         setCustomPrices(prices);
+        setSetupFees(setup);
+        setMonthlyFees(monthly);
         setAssignModal(user);
     };
     const updateUserStatus = async (userId, status)=>{
@@ -292,7 +300,9 @@ function UsersPageClient({ users, agents, initialTab }) {
         setIsSaving(true);
         const agentsList = agents.filter((a)=>selectedAgents[a.retellAgentId]).map((a)=>({
                 agentId: a.retellAgentId,
-                customPrice: customPrices[a.retellAgentId] ? parseFloat(customPrices[a.retellAgentId]) : undefined
+                customPrice: customPrices[a.retellAgentId] ? parseFloat(customPrices[a.retellAgentId]) : undefined,
+                setupFee: setupFees[a.retellAgentId] ? parseFloat(setupFees[a.retellAgentId]) : undefined,
+                monthlyFee: monthlyFees[a.retellAgentId] ? parseFloat(monthlyFees[a.retellAgentId]) : undefined
             }));
         await fetch(`/api/admin/users/${assignModal.id}`, {
             method: 'PATCH',
@@ -343,18 +353,18 @@ function UsersPageClient({ users, agents, initialTab }) {
                                 children: tab.count
                             }, void 0, false, {
                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                lineNumber: 126,
+                                lineNumber: 141,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, tab.key, true, {
                         fileName: "[project]/components/admin/users-page-client.tsx",
-                        lineNumber: 115,
+                        lineNumber: 130,
                         columnNumber: 11
                     }, this))
             }, void 0, false, {
                 fileName: "[project]/components/admin/users-page-client.tsx",
-                lineNumber: 113,
+                lineNumber: 128,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -364,7 +374,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                     children: "No users found."
                 }, void 0, false, {
                     fileName: "[project]/components/admin/users-page-client.tsx",
-                    lineNumber: 139,
+                    lineNumber: 154,
                     columnNumber: 11
                 }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("table", {
                     className: "w-full text-sm",
@@ -378,7 +388,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                         children: "User"
                                     }, void 0, false, {
                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                        lineNumber: 144,
+                                        lineNumber: 159,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -386,7 +396,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                         children: "Status"
                                     }, void 0, false, {
                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                        lineNumber: 145,
+                                        lineNumber: 160,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -394,7 +404,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                         children: "Agents"
                                     }, void 0, false, {
                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                        lineNumber: 146,
+                                        lineNumber: 161,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -402,7 +412,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                         children: "Joined"
                                     }, void 0, false, {
                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                        lineNumber: 147,
+                                        lineNumber: 162,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -410,18 +420,18 @@ function UsersPageClient({ users, agents, initialTab }) {
                                         children: "Actions"
                                     }, void 0, false, {
                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                        lineNumber: 148,
+                                        lineNumber: 163,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                lineNumber: 143,
+                                lineNumber: 158,
                                 columnNumber: 15
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/components/admin/users-page-client.tsx",
-                            lineNumber: 142,
+                            lineNumber: 157,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("tbody", {
@@ -438,7 +448,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                         children: user.name || '—'
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                                        lineNumber: 156,
+                                                        lineNumber: 171,
                                                         columnNumber: 23
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -446,18 +456,18 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                         children: user.email
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                                        lineNumber: 157,
+                                                        lineNumber: 172,
                                                         columnNumber: 23
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                lineNumber: 155,
+                                                lineNumber: 170,
                                                 columnNumber: 21
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/components/admin/users-page-client.tsx",
-                                            lineNumber: 154,
+                                            lineNumber: 169,
                                             columnNumber: 19
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -467,12 +477,12 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                 children: user.status
                                             }, void 0, false, {
                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                lineNumber: 161,
+                                                lineNumber: 176,
                                                 columnNumber: 21
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/components/admin/users-page-client.tsx",
-                                            lineNumber: 160,
+                                            lineNumber: 175,
                                             columnNumber: 19
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -482,7 +492,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                 children: "None assigned"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                lineNumber: 167,
+                                                lineNumber: 182,
                                                 columnNumber: 23
                                             }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "flex flex-wrap gap-1",
@@ -492,7 +502,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                             children: a.name
                                                         }, a.retellAgentId, false, {
                                                             fileName: "[project]/components/admin/users-page-client.tsx",
-                                                            lineNumber: 171,
+                                                            lineNumber: 186,
                                                             columnNumber: 27
                                                         }, this)),
                                                     user.agents.length > 2 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -503,18 +513,18 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                                        lineNumber: 176,
+                                                        lineNumber: 191,
                                                         columnNumber: 27
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                lineNumber: 169,
+                                                lineNumber: 184,
                                                 columnNumber: 23
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/components/admin/users-page-client.tsx",
-                                            lineNumber: 165,
+                                            lineNumber: 180,
                                             columnNumber: 19
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -522,7 +532,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                             children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["formatDate"])(user.createdAt)
                                         }, void 0, false, {
                                             fileName: "[project]/components/admin/users-page-client.tsx",
-                                            lineNumber: 181,
+                                            lineNumber: 196,
                                             columnNumber: 19
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -542,14 +552,14 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                                         size: 13
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                                                        lineNumber: 192,
+                                                                        lineNumber: 207,
                                                                         columnNumber: 29
                                                                     }, this),
                                                                     "Approve"
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                                lineNumber: 186,
+                                                                lineNumber: 201,
                                                                 columnNumber: 27
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["Button"], {
@@ -561,14 +571,14 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                                         size: 13
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                                                        lineNumber: 200,
+                                                                        lineNumber: 215,
                                                                         columnNumber: 29
                                                                     }, this),
                                                                     "Reject"
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                                lineNumber: 195,
+                                                                lineNumber: 210,
                                                                 columnNumber: 27
                                                             }, this)
                                                         ]
@@ -582,14 +592,14 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                                 size: 13
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                                lineNumber: 211,
+                                                                lineNumber: 226,
                                                                 columnNumber: 27
                                                             }, this),
                                                             "Deactivate"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                                        lineNumber: 206,
+                                                        lineNumber: 221,
                                                         columnNumber: 25
                                                     }, this),
                                                     user.status === 'INACTIVE' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["Button"], {
@@ -601,14 +611,14 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                                 size: 13
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                                lineNumber: 221,
+                                                                lineNumber: 236,
                                                                 columnNumber: 27
                                                             }, this),
                                                             "Reactivate"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                                        lineNumber: 216,
+                                                        lineNumber: 231,
                                                         columnNumber: 25
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["Button"], {
@@ -620,47 +630,47 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                                 size: 13
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                                lineNumber: 230,
+                                                                lineNumber: 245,
                                                                 columnNumber: 25
                                                             }, this),
                                                             "Agents"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                                        lineNumber: 225,
+                                                        lineNumber: 240,
                                                         columnNumber: 23
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                lineNumber: 183,
+                                                lineNumber: 198,
                                                 columnNumber: 21
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/components/admin/users-page-client.tsx",
-                                            lineNumber: 182,
+                                            lineNumber: 197,
                                             columnNumber: 19
                                         }, this)
                                     ]
                                 }, user.id, true, {
                                     fileName: "[project]/components/admin/users-page-client.tsx",
-                                    lineNumber: 153,
+                                    lineNumber: 168,
                                     columnNumber: 17
                                 }, this))
                         }, void 0, false, {
                             fileName: "[project]/components/admin/users-page-client.tsx",
-                            lineNumber: 151,
+                            lineNumber: 166,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/admin/users-page-client.tsx",
-                    lineNumber: 141,
+                    lineNumber: 156,
                     columnNumber: 11
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/admin/users-page-client.tsx",
-                lineNumber: 137,
+                lineNumber: 152,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$modal$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["Modal"], {
@@ -676,7 +686,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                             children: "No agents available. Create agents first."
                         }, void 0, false, {
                             fileName: "[project]/components/admin/users-page-client.tsx",
-                            lineNumber: 251,
+                            lineNumber: 266,
                             columnNumber: 13
                         }, this) : agents.map((agent)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "border border-gray-200 rounded-lg p-3",
@@ -695,7 +705,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                 className: "w-4 h-4 accent-[#004D3E]"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                lineNumber: 256,
+                                                lineNumber: 271,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -704,69 +714,175 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                 children: agent.name
                                             }, void 0, false, {
                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                lineNumber: 263,
+                                                lineNumber: 278,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                        lineNumber: 255,
+                                        lineNumber: 270,
                                         columnNumber: 17
                                     }, this),
                                     selectedAgents[agent.retellAgentId] && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        className: "mt-2 pl-7",
+                                        className: "mt-3 pl-7 grid grid-cols-3 gap-3",
                                         children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
-                                                className: "text-xs text-gray-500",
-                                                children: "Custom price (per min, shown to user)"
-                                            }, void 0, false, {
-                                                fileName: "[project]/components/admin/users-page-client.tsx",
-                                                lineNumber: 269,
-                                                columnNumber: 21
-                                            }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                className: "flex items-center gap-1 mt-1",
                                                 children: [
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                        className: "text-gray-400 text-sm",
-                                                        children: "$"
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                                        className: "text-xs text-gray-500 block mb-1",
+                                                        children: "Setup Fee (one-time)"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                                        lineNumber: 271,
+                                                        lineNumber: 285,
                                                         columnNumber: 23
                                                     }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
-                                                        type: "number",
-                                                        step: "0.01",
-                                                        min: "0",
-                                                        placeholder: "0.00",
-                                                        value: customPrices[agent.retellAgentId] || '',
-                                                        onChange: (e)=>setCustomPrices((prev)=>({
-                                                                    ...prev,
-                                                                    [agent.retellAgentId]: e.target.value
-                                                                })),
-                                                        className: "w-24 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
-                                                    }, void 0, false, {
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                                        className: "flex items-center gap-1",
+                                                        children: [
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                                className: "text-gray-400 text-sm",
+                                                                children: "$"
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/components/admin/users-page-client.tsx",
+                                                                lineNumber: 287,
+                                                                columnNumber: 25
+                                                            }, this),
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
+                                                                type: "number",
+                                                                step: "0.01",
+                                                                min: "0",
+                                                                placeholder: "0.00",
+                                                                value: setupFees[agent.retellAgentId] || '',
+                                                                onChange: (e)=>setSetupFees((prev)=>({
+                                                                            ...prev,
+                                                                            [agent.retellAgentId]: e.target.value
+                                                                        })),
+                                                                className: "w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/components/admin/users-page-client.tsx",
+                                                                lineNumber: 288,
+                                                                columnNumber: 25
+                                                            }, this)
+                                                        ]
+                                                    }, void 0, true, {
                                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                                        lineNumber: 272,
+                                                        lineNumber: 286,
                                                         columnNumber: 23
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                                lineNumber: 270,
+                                                lineNumber: 284,
+                                                columnNumber: 21
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                                children: [
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                                        className: "text-xs text-gray-500 block mb-1",
+                                                        children: "Monthly Fee"
+                                                    }, void 0, false, {
+                                                        fileName: "[project]/components/admin/users-page-client.tsx",
+                                                        lineNumber: 300,
+                                                        columnNumber: 23
+                                                    }, this),
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                                        className: "flex items-center gap-1",
+                                                        children: [
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                                className: "text-gray-400 text-sm",
+                                                                children: "$"
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/components/admin/users-page-client.tsx",
+                                                                lineNumber: 302,
+                                                                columnNumber: 25
+                                                            }, this),
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
+                                                                type: "number",
+                                                                step: "0.01",
+                                                                min: "0",
+                                                                placeholder: "0.00",
+                                                                value: monthlyFees[agent.retellAgentId] || '',
+                                                                onChange: (e)=>setMonthlyFees((prev)=>({
+                                                                            ...prev,
+                                                                            [agent.retellAgentId]: e.target.value
+                                                                        })),
+                                                                className: "w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/components/admin/users-page-client.tsx",
+                                                                lineNumber: 303,
+                                                                columnNumber: 25
+                                                            }, this)
+                                                        ]
+                                                    }, void 0, true, {
+                                                        fileName: "[project]/components/admin/users-page-client.tsx",
+                                                        lineNumber: 301,
+                                                        columnNumber: 23
+                                                    }, this)
+                                                ]
+                                            }, void 0, true, {
+                                                fileName: "[project]/components/admin/users-page-client.tsx",
+                                                lineNumber: 299,
+                                                columnNumber: 21
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                                children: [
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                                        className: "text-xs text-gray-500 block mb-1",
+                                                        children: "Per-min Rate"
+                                                    }, void 0, false, {
+                                                        fileName: "[project]/components/admin/users-page-client.tsx",
+                                                        lineNumber: 315,
+                                                        columnNumber: 23
+                                                    }, this),
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                                        className: "flex items-center gap-1",
+                                                        children: [
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                                className: "text-gray-400 text-sm",
+                                                                children: "$"
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/components/admin/users-page-client.tsx",
+                                                                lineNumber: 317,
+                                                                columnNumber: 25
+                                                            }, this),
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
+                                                                type: "number",
+                                                                step: "0.001",
+                                                                min: "0",
+                                                                placeholder: "0.000",
+                                                                value: customPrices[agent.retellAgentId] || '',
+                                                                onChange: (e)=>setCustomPrices((prev)=>({
+                                                                            ...prev,
+                                                                            [agent.retellAgentId]: e.target.value
+                                                                        })),
+                                                                className: "w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/components/admin/users-page-client.tsx",
+                                                                lineNumber: 318,
+                                                                columnNumber: 25
+                                                            }, this)
+                                                        ]
+                                                    }, void 0, true, {
+                                                        fileName: "[project]/components/admin/users-page-client.tsx",
+                                                        lineNumber: 316,
+                                                        columnNumber: 23
+                                                    }, this)
+                                                ]
+                                            }, void 0, true, {
+                                                fileName: "[project]/components/admin/users-page-client.tsx",
+                                                lineNumber: 314,
                                                 columnNumber: 21
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/admin/users-page-client.tsx",
-                                        lineNumber: 268,
+                                        lineNumber: 283,
                                         columnNumber: 19
                                     }, this)
                                 ]
                             }, agent.retellAgentId, true, {
                                 fileName: "[project]/components/admin/users-page-client.tsx",
-                                lineNumber: 254,
+                                lineNumber: 269,
                                 columnNumber: 15
                             }, this)),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -778,7 +894,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                     children: "Cancel"
                                 }, void 0, false, {
                                     fileName: "[project]/components/admin/users-page-client.tsx",
-                                    lineNumber: 289,
+                                    lineNumber: 336,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["Button"], {
@@ -787,24 +903,24 @@ function UsersPageClient({ users, agents, initialTab }) {
                                     children: "Save assignments"
                                 }, void 0, false, {
                                     fileName: "[project]/components/admin/users-page-client.tsx",
-                                    lineNumber: 290,
+                                    lineNumber: 337,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/admin/users-page-client.tsx",
-                            lineNumber: 288,
+                            lineNumber: 335,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/admin/users-page-client.tsx",
-                    lineNumber: 249,
+                    lineNumber: 264,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/admin/users-page-client.tsx",
-                lineNumber: 243,
+                lineNumber: 258,
                 columnNumber: 7
             }, this)
         ]

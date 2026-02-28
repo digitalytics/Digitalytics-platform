@@ -39,6 +39,11 @@ export function formatCost(cost: number | null | undefined): string {
   return `$${Number(cost).toFixed(4)}`;
 }
 
+export function formatMoney(amount: number | null | undefined): string {
+  if (amount == null) return '—';
+  return `$${Number(amount).toFixed(2)}`;
+}
+
 export function formatSentiment(sentiment: string | null | undefined): string {
   if (!sentiment) return '—';
   return sentiment.charAt(0).toUpperCase() + sentiment.slice(1).toLowerCase();

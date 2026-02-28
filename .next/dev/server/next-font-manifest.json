@@ -1,10 +1,10 @@
 {
   "app": {
-    "[project]/app/(auth)/login/page": [
+    "[project]/app/(dashboard)/agents/[agentId]/page": [
       "static/media/Geist_Variable-s.p.92592eb2.woff2",
       "static/media/GeistMono_Variable.p.2f937313.woff2"
     ],
-    "[project]/app/(dashboard)/agents/[agentId]/page": [
+    "[project]/app/(dashboard)/billing/page": [
       "static/media/Geist_Variable-s.p.92592eb2.woff2",
       "static/media/GeistMono_Variable.p.2f937313.woff2"
     ],
@@ -13,14 +13,6 @@
       "static/media/GeistMono_Variable.p.2f937313.woff2"
     ],
     "[project]/app/(dashboard)/calls/page": [
-      "static/media/Geist_Variable-s.p.92592eb2.woff2",
-      "static/media/GeistMono_Variable.p.2f937313.woff2"
-    ],
-    "[project]/app/(dashboard)/campaigns/[id]/page": [
-      "static/media/Geist_Variable-s.p.92592eb2.woff2",
-      "static/media/GeistMono_Variable.p.2f937313.woff2"
-    ],
-    "[project]/app/(dashboard)/campaigns/new/page": [
       "static/media/Geist_Variable-s.p.92592eb2.woff2",
       "static/media/GeistMono_Variable.p.2f937313.woff2"
     ],
@@ -40,11 +32,11 @@
       "static/media/Geist_Variable-s.p.92592eb2.woff2",
       "static/media/GeistMono_Variable.p.2f937313.woff2"
     ],
-    "[project]/app/admin/analytics/page": [
+    "[project]/app/admin/billing/[userId]/page": [
       "static/media/Geist_Variable-s.p.92592eb2.woff2",
       "static/media/GeistMono_Variable.p.2f937313.woff2"
     ],
-    "[project]/app/admin/page": [
+    "[project]/app/admin/billing/page": [
       "static/media/Geist_Variable-s.p.92592eb2.woff2",
       "static/media/GeistMono_Variable.p.2f937313.woff2"
     ],

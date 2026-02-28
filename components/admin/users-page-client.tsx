@@ -15,7 +15,14 @@ interface User {
   role: string;
   status: string;
   createdAt: string;
-  agents: Array<{ name: string; retellAgentId: string; customPrice: number | null }>;
+  agents: Array<{
+    name: string;
+    retellAgentId: string;
+    customPrice:  number | null;
+    setupFee:     number | null;
+    monthlyFee:   number | null;
+    setupFeePaid: boolean;
+  }>;
 }
 
 interface Agent {
@@ -47,7 +54,9 @@ export function UsersPageClient({
   const [activeTab, setActiveTab] = useState<Tab>((initialTab as Tab) || 'all');
   const [assignModal, setAssignModal] = useState<User | null>(null);
   const [selectedAgents, setSelectedAgents] = useState<Record<string, boolean>>({});
-  const [customPrices, setCustomPrices] = useState<Record<string, string>>({});
+  const [customPrices,   setCustomPrices]   = useState<Record<string, string>>({});
+  const [setupFees,      setSetupFees]      = useState<Record<string, string>>({});
+  const [monthlyFees,    setMonthlyFees]    = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
   const filtered = users.filter(u => {
@@ -56,15 +65,21 @@ export function UsersPageClient({
   });
 
   const openAssignModal = (user: User) => {
-    const sel: Record<string, boolean> = {};
-    const prices: Record<string, string> = {};
+    const sel:      Record<string, boolean> = {};
+    const prices:   Record<string, string>  = {};
+    const setup:    Record<string, string>  = {};
+    const monthly:  Record<string, string>  = {};
     agents.forEach(a => {
       const assigned = user.agents.find(ua => ua.retellAgentId === a.retellAgentId);
       sel[a.retellAgentId] = !!assigned;
-      if (assigned?.customPrice) prices[a.retellAgentId] = String(assigned.customPrice);
+      if (assigned?.customPrice) prices[a.retellAgentId]  = String(assigned.customPrice);
+      if (assigned?.setupFee)    setup[a.retellAgentId]   = String(assigned.setupFee);
+      if (assigned?.monthlyFee)  monthly[a.retellAgentId] = String(assigned.monthlyFee);
     });
     setSelectedAgents(sel);
     setCustomPrices(prices);
+    setSetupFees(setup);
+    setMonthlyFees(monthly);
     setAssignModal(user);
   };
 
@@ -83,10 +98,10 @@ export function UsersPageClient({
     const agentsList = agents
       .filter(a => selectedAgents[a.retellAgentId])
       .map(a => ({
-        agentId: a.retellAgentId,
-        customPrice: customPrices[a.retellAgentId]
-          ? parseFloat(customPrices[a.retellAgentId])
-          : undefined,
+        agentId:     a.retellAgentId,
+        customPrice: customPrices[a.retellAgentId] ? parseFloat(customPrices[a.retellAgentId]) : undefined,
+        setupFee:    setupFees[a.retellAgentId]    ? parseFloat(setupFees[a.retellAgentId])    : undefined,
+        monthlyFee:  monthlyFees[a.retellAgentId]  ? parseFloat(monthlyFees[a.retellAgentId])  : undefined,
       }));
 
     await fetch(`/api/admin/users/${assignModal.id}`, {
@@ -265,19 +280,51 @@ export function UsersPageClient({
                   </label>
                 </div>
                 {selectedAgents[agent.retellAgentId] && (
-                  <div className="mt-2 pl-7">
-                    <label className="text-xs text-gray-500">Custom price (per min, shown to user)</label>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-gray-400 text-sm">$</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={customPrices[agent.retellAgentId] || ''}
-                        onChange={e => setCustomPrices(prev => ({ ...prev, [agent.retellAgentId]: e.target.value }))}
-                        className="w-24 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
-                      />
+                  <div className="mt-3 pl-7 grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Setup Fee (one-time)</label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={setupFees[agent.retellAgentId] || ''}
+                          onChange={e => setSetupFees(prev => ({ ...prev, [agent.retellAgentId]: e.target.value }))}
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Monthly Fee</label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={monthlyFees[agent.retellAgentId] || ''}
+                          onChange={e => setMonthlyFees(prev => ({ ...prev, [agent.retellAgentId]: e.target.value }))}
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Per-min Rate</label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          placeholder="0.000"
+                          value={customPrices[agent.retellAgentId] || ''}
+                          onChange={e => setCustomPrices(prev => ({ ...prev, [agent.retellAgentId]: e.target.value }))}
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
