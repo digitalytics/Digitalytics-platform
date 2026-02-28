@@ -194,6 +194,56 @@ describe('Full scenario — 2nd Generate preserves correct subtotal', () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildLineItems — two agents (regression: recalculate after new agent added)
+// ---------------------------------------------------------------------------
+describe('buildLineItems — two agents', () => {
+  /**
+   * Regression: when a second agent is assigned and the user clicks
+   * "Update Bill", buildLineItems must return ALL line items for ALL agents.
+   * The recalculate path must replace every item (not just USAGE_FEE) so
+   * the new agent's SETUP_FEE + MONTHLY_FEE appear on the invoice.
+   */
+  it('returns setup + monthly items for both agents', () => {
+    const agentA = makeAgent({
+      retellAgentId:         'agent-A',
+      agentName:             'Agent A',
+      setupFee:              500,
+      setupFeeAlreadyBilled: false,
+      monthlyFee:            200,
+    });
+    const agentB = makeAgent({
+      retellAgentId:         'agent-B',
+      agentName:             'Agent B',
+      setupFee:              300,
+      setupFeeAlreadyBilled: false,
+      monthlyFee:            100,
+    });
+    const items = buildLineItems([agentA, agentB]);
+
+    expect(items.filter(i => i.type === 'SETUP_FEE')).toHaveLength(2);
+    expect(items.filter(i => i.type === 'MONTHLY_FEE')).toHaveLength(2);
+    expect(computeSubtotal(items)).toBe(1100); // 500+200+300+100
+  });
+
+  it('subtotal for two agents with usage sums all six items', () => {
+    const agentA = makeAgent({
+      retellAgentId: 'agent-A', agentName: 'Agent A',
+      setupFee: 500, setupFeeAlreadyBilled: false,
+      monthlyFee: 200, customPrice: 0.15, usageMs: 120000, // 2 min → 0.30
+    });
+    const agentB = makeAgent({
+      retellAgentId: 'agent-B', agentName: 'Agent B',
+      setupFee: 300, setupFeeAlreadyBilled: false,
+      monthlyFee: 100, customPrice: 0.10, usageMs: 60000,  // 1 min → 0.10
+    });
+    const items = buildLineItems([agentA, agentB]);
+    // 500 + 200 + 0.30 + 300 + 100 + 0.10 = 1100.40
+    expect(computeSubtotal(items)).toBeCloseTo(1100.40, 2);
+    expect(items).toHaveLength(6);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // isInvoiceOverdue — automated overdue detection (no admin needed)
 // ---------------------------------------------------------------------------
 describe('isInvoiceOverdue', () => {

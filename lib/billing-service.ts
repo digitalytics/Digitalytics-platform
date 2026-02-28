@@ -216,14 +216,15 @@ export async function ensureCurrentInvoice(userId: string) {
   // ── RECALCULATE existing DRAFT ──────────────────────────────────────────────
   if (action.type === 'recalculate') {
     await prisma.$transaction(async tx => {
+      // Delete ALL line items so newly-assigned agents' SETUP_FEE + MONTHLY_FEE
+      // are picked up, not just USAGE_FEE updates.
       await tx.invoiceLineItem.deleteMany({
-        where: { invoiceId: action.invoiceId, type: 'USAGE_FEE' },
+        where: { invoiceId: action.invoiceId },
       });
 
-      const usageItems = lineItems.filter(l => l.type === 'USAGE_FEE');
-      if (usageItems.length > 0) {
+      if (lineItems.length > 0) {
         await tx.invoiceLineItem.createMany({
-          data: usageItems.map(item => ({
+          data: lineItems.map(item => ({
             invoiceId:   action.invoiceId,
             type:        item.type,
             agentId:     item.agentId,
@@ -236,13 +237,8 @@ export async function ensureCurrentInvoice(userId: string) {
         });
       }
 
-      // Re-query all items for a reliable total
-      const allItems = await tx.invoiceLineItem.findMany({
-        where:  { invoiceId: action.invoiceId },
-        select: { total: true },
-      });
       const newSubtotal = Math.round(
-        allItems.reduce((s, l) => s + Number(l.total), 0) * 100
+        lineItems.reduce((s, l) => s + l.total, 0) * 100
       ) / 100;
 
       await tx.invoice.update({

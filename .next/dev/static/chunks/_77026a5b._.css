@@ -727,10 +727,6 @@
     display: none;
   }
 
-  .inline {
-    display: inline;
-  }
-
   .inline-block {
     display: inline-block;
   }
@@ -1556,10 +1552,6 @@
 
   .pr-10 {
     padding-right: calc(var(--spacing) * 10);
-  }
-
-  .pb-3 {
-    padding-bottom: calc(var(--spacing) * 3);
   }
 
   .pl-5 {

@@ -293,33 +293,51 @@ async function PATCH(request, { params }) {
     }
     // Update agent assignments
     if (agents !== undefined) {
-        // Remove all existing and re-create
+        // Look up agent DB records from retellAgentIds
+        const agentRecords = agents.length > 0 ? await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].agent.findMany({
+            where: {
+                retellAgentId: {
+                    in: agents.map((a)=>a.agentId)
+                }
+            }
+        }) : [];
+        const incomingAgentDbIds = new Set(agentRecords.map((a)=>a.id));
+        // Remove agents that are no longer in the incoming list
         await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].userAgent.deleteMany({
             where: {
-                userId: id
+                userId: id,
+                agentId: {
+                    notIn: [
+                        ...incomingAgentDbIds
+                    ]
+                }
             }
         });
-        if (agents.length > 0) {
-            // Look up agent IDs from retellAgentId
-            const agentRecords = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].agent.findMany({
+        // Upsert each incoming agent — preserves assignedAt for existing assignments
+        // so historical call logs remain visible (calls are filtered by assignedAt).
+        for (const agentRecord of agentRecords){
+            const input = agents.find((a)=>a.agentId === agentRecord.retellAgentId);
+            await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].userAgent.upsert({
                 where: {
-                    retellAgentId: {
-                        in: agents.map((a)=>a.agentId)
-                    }
-                }
-            });
-            await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].userAgent.createMany({
-                data: agentRecords.map((agent)=>{
-                    const input = agents.find((a)=>a.agentId === agent.retellAgentId);
-                    return {
+                    userId_agentId: {
                         userId: id,
-                        agentId: agent.id,
-                        customPrice: input?.customPrice ?? null,
-                        setupFee: input?.setupFee ?? null,
-                        monthlyFee: input?.monthlyFee ?? null,
-                        assignedBy: session.user.id
-                    };
-                })
+                        agentId: agentRecord.id
+                    }
+                },
+                update: {
+                    customPrice: input?.customPrice ?? null,
+                    setupFee: input?.setupFee ?? null,
+                    monthlyFee: input?.monthlyFee ?? null,
+                    assignedBy: session.user.id
+                },
+                create: {
+                    userId: id,
+                    agentId: agentRecord.id,
+                    customPrice: input?.customPrice ?? null,
+                    setupFee: input?.setupFee ?? null,
+                    monthlyFee: input?.monthlyFee ?? null,
+                    assignedBy: session.user.id
+                }
             });
         }
     }

@@ -46,27 +46,41 @@ export async function PATCH(
 
   // Update agent assignments
   if (agents !== undefined) {
-    // Remove all existing and re-create
-    await prisma.userAgent.deleteMany({ where: { userId: id } });
+    // Look up agent DB records from retellAgentIds
+    const agentRecords = agents.length > 0
+      ? await prisma.agent.findMany({
+          where: { retellAgentId: { in: agents.map(a => a.agentId) } },
+        })
+      : [];
 
-    if (agents.length > 0) {
-      // Look up agent IDs from retellAgentId
-      const agentRecords = await prisma.agent.findMany({
-        where: { retellAgentId: { in: agents.map(a => a.agentId) } },
-      });
+    const incomingAgentDbIds = new Set(agentRecords.map(a => a.id));
 
-      await prisma.userAgent.createMany({
-        data: agentRecords.map(agent => {
-          const input = agents.find(a => a.agentId === agent.retellAgentId);
-          return {
-            userId:      id,
-            agentId:     agent.id,
-            customPrice: input?.customPrice ?? null,
-            setupFee:    input?.setupFee    ?? null,
-            monthlyFee:  input?.monthlyFee  ?? null,
-            assignedBy:  session.user.id,
-          };
-        }),
+    // Remove agents that are no longer in the incoming list
+    await prisma.userAgent.deleteMany({
+      where: { userId: id, agentId: { notIn: [...incomingAgentDbIds] } },
+    });
+
+    // Upsert each incoming agent — preserves assignedAt for existing assignments
+    // so historical call logs remain visible (calls are filtered by assignedAt).
+    for (const agentRecord of agentRecords) {
+      const input = agents.find(a => a.agentId === agentRecord.retellAgentId);
+      await prisma.userAgent.upsert({
+        where:  { userId_agentId: { userId: id, agentId: agentRecord.id } },
+        update: {
+          customPrice: input?.customPrice ?? null,
+          setupFee:    input?.setupFee    ?? null,
+          monthlyFee:  input?.monthlyFee  ?? null,
+          assignedBy:  session.user.id,
+          // assignedAt intentionally NOT updated — preserves call log visibility
+        },
+        create: {
+          userId:      id,
+          agentId:     agentRecord.id,
+          customPrice: input?.customPrice ?? null,
+          setupFee:    input?.setupFee    ?? null,
+          monthlyFee:  input?.monthlyFee  ?? null,
+          assignedBy:  session.user.id,
+        },
       });
     }
   }

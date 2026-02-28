@@ -496,16 +496,16 @@ async function ensureCurrentInvoice(userId) {
     // ── RECALCULATE existing DRAFT ──────────────────────────────────────────────
     if (action.type === 'recalculate') {
         await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].$transaction(async (tx)=>{
+            // Delete ALL line items so newly-assigned agents' SETUP_FEE + MONTHLY_FEE
+            // are picked up, not just USAGE_FEE updates.
             await tx.invoiceLineItem.deleteMany({
                 where: {
-                    invoiceId: action.invoiceId,
-                    type: 'USAGE_FEE'
+                    invoiceId: action.invoiceId
                 }
             });
-            const usageItems = lineItems.filter((l)=>l.type === 'USAGE_FEE');
-            if (usageItems.length > 0) {
+            if (lineItems.length > 0) {
                 await tx.invoiceLineItem.createMany({
-                    data: usageItems.map((item)=>({
+                    data: lineItems.map((item)=>({
                             invoiceId: action.invoiceId,
                             type: item.type,
                             agentId: item.agentId,
@@ -517,16 +517,7 @@ async function ensureCurrentInvoice(userId) {
                         }))
                 });
             }
-            // Re-query all items for a reliable total
-            const allItems = await tx.invoiceLineItem.findMany({
-                where: {
-                    invoiceId: action.invoiceId
-                },
-                select: {
-                    total: true
-                }
-            });
-            const newSubtotal = Math.round(allItems.reduce((s, l)=>s + Number(l.total), 0) * 100) / 100;
+            const newSubtotal = Math.round(lineItems.reduce((s, l)=>s + l.total, 0) * 100) / 100;
             await tx.invoice.update({
                 where: {
                     id: action.invoiceId
