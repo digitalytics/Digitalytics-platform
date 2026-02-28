@@ -38,34 +38,34 @@ export default async function BillingPage() {
   // Live usage per agent
   const usageByAgent = await Promise.all(
     userAgents.map(async ua => {
-      if (!ua.customPrice) return { retellAgentId: ua.agent.retellAgentId, minutes: 0, cost: 0 };
+      if (!ua.costMultiplier) return { retellAgentId: ua.agent.retellAgentId, retellCost: 0, cost: 0 };
       const agg = await prisma.call.aggregate({
         where: {
           agentId:        ua.agent.retellAgentId,
           startTimestamp: { gte: ua.assignedAt > periodStart ? ua.assignedAt : periodStart, lte: periodEnd },
-          durationMs:     { not: null },
+          totalCost:      { not: null },
         },
-        _sum: { durationMs: true },
+        _sum: { totalCost: true },
       });
-      const minutes = (agg._sum.durationMs ?? 0) / 60000;
-      const cost    = Math.round(minutes * Number(ua.customPrice) * 100) / 100;
-      return { retellAgentId: ua.agent.retellAgentId, minutes, cost };
+      const retellCost = Number(agg._sum.totalCost ?? 0);
+      const cost       = Math.round(retellCost * Number(ua.costMultiplier) * 100) / 100;
+      return { retellAgentId: ua.agent.retellAgentId, retellCost, cost };
     })
   );
   const usageMap = Object.fromEntries(usageByAgent.map(u => [u.retellAgentId, u]));
 
   const agents = userAgents.map(ua => ({
-    retellAgentId: ua.agent.retellAgentId,
-    name:          ua.agent.name,
-    isActive:      ua.agent.isActive,
-    phoneNumber:   ua.agent.phoneNumber,
-    assignedAt:    ua.assignedAt.toISOString(),
-    setupFee:      ua.setupFee    ? Number(ua.setupFee)    : null,
-    setupFeePaid:  ua.setupFeePaid,
-    monthlyFee:    ua.monthlyFee  ? Number(ua.monthlyFee)  : null,
-    customPrice:   ua.customPrice ? Number(ua.customPrice) : null,
-    usageMinutes:  usageMap[ua.agent.retellAgentId]?.minutes ?? 0,
-    usageCost:     usageMap[ua.agent.retellAgentId]?.cost    ?? 0,
+    retellAgentId:  ua.agent.retellAgentId,
+    name:           ua.agent.name,
+    isActive:       ua.agent.isActive,
+    phoneNumber:    ua.agent.phoneNumber,
+    assignedAt:     ua.assignedAt.toISOString(),
+    setupFee:       ua.setupFee       ? Number(ua.setupFee)       : null,
+    setupFeePaid:   ua.setupFeePaid,
+    monthlyFee:     ua.monthlyFee     ? Number(ua.monthlyFee)     : null,
+    costMultiplier: ua.costMultiplier ? Number(ua.costMultiplier) : null,
+    retellCost:     usageMap[ua.agent.retellAgentId]?.retellCost ?? 0,
+    usageCost:      usageMap[ua.agent.retellAgentId]?.cost       ?? 0,
   }));
 
   // Fetch all non-cancelled invoices, newest first

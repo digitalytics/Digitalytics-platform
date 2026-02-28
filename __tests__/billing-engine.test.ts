@@ -11,11 +11,11 @@ function makeAgent(overrides: Partial<AgentInput> = {}): AgentInput {
     setupFee:              null,
     setupFeeAlreadyBilled: false,
     monthlyFee:            null,
-    customPrice:           null,
+    costMultiplier:        null,
     assignedAt:            ASSIGNED_BEFORE_PERIOD,
     periodStart:           PERIOD_START,
     periodEnd:             PERIOD_END,
-    usageMs:               0,
+    usageCost:             0,
     ...overrides,
   };
 }
@@ -80,28 +80,31 @@ describe('buildLineItems — MONTHLY_FEE', () => {
 // buildLineItems — USAGE_FEE
 // ---------------------------------------------------------------------------
 describe('buildLineItems — USAGE_FEE', () => {
-  it('includes USAGE_FEE when usageMs > 0', () => {
-    const items = buildLineItems([makeAgent({ customPrice: 0.15, usageMs: 120000 })]);
+  it('includes USAGE_FEE when usageCost > 0', () => {
+    const items = buildLineItems([makeAgent({ costMultiplier: 1.5, usageCost: 0.013417 })]);
     const fee = items.find(i => i.type === 'USAGE_FEE');
     expect(fee).toBeDefined();
-    expect(fee?.quantity).toBeCloseTo(2, 4);   // 2 minutes
-    expect(fee?.total).toBeCloseTo(0.30, 2);
+    expect(fee?.quantity).toBeCloseTo(0.013417, 6);   // quantity = Retell cost
+    expect(fee?.unitPrice).toBe(1.5);                 // unitPrice = multiplier
+    expect(fee?.total).toBeCloseTo(0.02, 2);          // 0.013417 × 1.5 = 0.020126 ≈ 0.02
   });
 
-  it('excludes USAGE_FEE when usageMs is 0', () => {
-    const items = buildLineItems([makeAgent({ customPrice: 0.15, usageMs: 0 })]);
+  it('excludes USAGE_FEE when usageCost is 0', () => {
+    const items = buildLineItems([makeAgent({ costMultiplier: 1.5, usageCost: 0 })]);
     expect(items.find(i => i.type === 'USAGE_FEE')).toBeUndefined();
   });
 
-  it('excludes USAGE_FEE when customPrice is null', () => {
-    const items = buildLineItems([makeAgent({ customPrice: null, usageMs: 60000 })]);
+  it('excludes USAGE_FEE when costMultiplier is null', () => {
+    const items = buildLineItems([makeAgent({ costMultiplier: null, usageCost: 0.05 })]);
     expect(items.find(i => i.type === 'USAGE_FEE')).toBeUndefined();
   });
 
-  it('description includes formatted minutes', () => {
-    const items = buildLineItems([makeAgent({ customPrice: 0.15, usageMs: 90000 })]);
+  it('description includes agent name but not raw cost or multiplier', () => {
+    const items = buildLineItems([makeAgent({ costMultiplier: 2.0, usageCost: 0.042167 })]);
     const fee = items.find(i => i.type === 'USAGE_FEE');
-    expect(fee?.description).toContain('1.5000 min');
+    expect(fee?.description).toContain('Test Agent');
+    expect(fee?.description).not.toContain('0.042167');
+    expect(fee?.description).not.toContain('2×');
   });
 });
 
@@ -112,10 +115,10 @@ describe('computeSubtotal', () => {
   it('sums all item totals to 2dp', () => {
     const items = buildLineItems([
       makeAgent({
-        setupFee:    500,
-        monthlyFee:  200,
-        customPrice: 0.15,
-        usageMs:     120000,
+        setupFee:       500,
+        monthlyFee:     200,
+        costMultiplier: 1.5,
+        usageCost:      0.2,
       }),
     ]);
     // 500 + 200 + 0.30 = 700.30
@@ -128,7 +131,7 @@ describe('computeSubtotal', () => {
 
   it('handles floating-point correctly', () => {
     // 0.1 + 0.2 in raw JS = 0.30000000000000004 — must round to 0.30
-    const items = buildLineItems([makeAgent({ customPrice: 0.1, usageMs: 120000 })]); // 2 min * 0.1 = 0.2
+    const items = buildLineItems([makeAgent({ costMultiplier: 2.0, usageCost: 0.1 })]); // 0.1 * 2.0 = 0.2
     expect(computeSubtotal(items)).toBe(0.20);
   });
 });
@@ -158,7 +161,7 @@ describe('generateInvoiceNumber', () => {
 // ---------------------------------------------------------------------------
 describe('Full scenario — 2nd Generate preserves correct subtotal', () => {
   it('subtotal includes setup fee when setupFeeAlreadyBilled=false (DRAFT recalculate path)', () => {
-    // Simulates: agent has setup fee $500, monthly $200, 2 min usage @ $0.15
+    // Simulates: agent has setup fee $500, monthly $200, usage cost $0.20 @ 1.5× multiplier
     // On 2nd Generate, route sets setupFeeAlreadyBilled=false because it excludes
     // the current draft from the alreadyBilled lookup.
     const items = buildLineItems([
@@ -166,8 +169,8 @@ describe('Full scenario — 2nd Generate preserves correct subtotal', () => {
         setupFee:              500,
         setupFeeAlreadyBilled: false,  // correct — current draft excluded from query
         monthlyFee:            200,
-        customPrice:           0.15,
-        usageMs:               120000, // 2 minutes
+        costMultiplier:        1.5,
+        usageCost:             0.2,    // 0.2 × 1.5 = 0.30
       }),
     ]);
     const subtotal = computeSubtotal(items);
@@ -182,8 +185,8 @@ describe('Full scenario — 2nd Generate preserves correct subtotal', () => {
         setupFee:              500,
         setupFeeAlreadyBilled: true,   // correct — prior month's invoice had it
         monthlyFee:            200,
-        customPrice:           0.15,
-        usageMs:               120000,
+        costMultiplier:        1.5,
+        usageCost:             0.2,    // 0.2 × 1.5 = 0.30
       }),
     ]);
     const subtotal = computeSubtotal(items);
@@ -229,12 +232,12 @@ describe('buildLineItems — two agents', () => {
     const agentA = makeAgent({
       retellAgentId: 'agent-A', agentName: 'Agent A',
       setupFee: 500, setupFeeAlreadyBilled: false,
-      monthlyFee: 200, customPrice: 0.15, usageMs: 120000, // 2 min → 0.30
+      monthlyFee: 200, costMultiplier: 1.5, usageCost: 0.2, // 0.2 × 1.5 = 0.30
     });
     const agentB = makeAgent({
       retellAgentId: 'agent-B', agentName: 'Agent B',
       setupFee: 300, setupFeeAlreadyBilled: false,
-      monthlyFee: 100, customPrice: 0.10, usageMs: 60000,  // 1 min → 0.10
+      monthlyFee: 100, costMultiplier: 1.0, usageCost: 0.1, // 0.1 × 1.0 = 0.10
     });
     const items = buildLineItems([agentA, agentB]);
     // 500 + 200 + 0.30 + 300 + 100 + 0.10 = 1100.40

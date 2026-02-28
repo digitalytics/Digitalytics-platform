@@ -287,7 +287,7 @@ function UsersPageClient({ users, agents, initialTab }) {
     const [activeTab, setActiveTab] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(initialTab || 'all');
     const [assignModal, setAssignModal] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [selectedAgents, setSelectedAgents] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({});
-    const [customPrices, setCustomPrices] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({});
+    const [costMultipliers, setCostMultipliers] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({});
     const [setupFees, setSetupFees] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({});
     const [monthlyFees, setMonthlyFees] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({});
     const [isSaving, setIsSaving] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
@@ -297,18 +297,18 @@ function UsersPageClient({ users, agents, initialTab }) {
     });
     const openAssignModal = (user)=>{
         const sel = {};
-        const prices = {};
+        const multipliers = {};
         const setup = {};
         const monthly = {};
         agents.forEach((a)=>{
             const assigned = user.agents.find((ua)=>ua.retellAgentId === a.retellAgentId);
             sel[a.retellAgentId] = !!assigned;
-            if (assigned?.customPrice) prices[a.retellAgentId] = String(assigned.customPrice);
+            if (assigned?.costMultiplier) multipliers[a.retellAgentId] = String(assigned.costMultiplier);
             if (assigned?.setupFee) setup[a.retellAgentId] = String(assigned.setupFee);
             if (assigned?.monthlyFee) monthly[a.retellAgentId] = String(assigned.monthlyFee);
         });
         setSelectedAgents(sel);
-        setCustomPrices(prices);
+        setCostMultipliers(multipliers);
         setSetupFees(setup);
         setMonthlyFees(monthly);
         setAssignModal(user);
@@ -330,7 +330,7 @@ function UsersPageClient({ users, agents, initialTab }) {
         setIsSaving(true);
         const agentsList = agents.filter((a)=>selectedAgents[a.retellAgentId]).map((a)=>({
                 agentId: a.retellAgentId,
-                customPrice: customPrices[a.retellAgentId] ? parseFloat(customPrices[a.retellAgentId]) : undefined,
+                costMultiplier: costMultipliers[a.retellAgentId] ? parseFloat(costMultipliers[a.retellAgentId]) : undefined,
                 setupFee: setupFees[a.retellAgentId] ? parseFloat(setupFees[a.retellAgentId]) : undefined,
                 monthlyFee: monthlyFees[a.retellAgentId] ? parseFloat(monthlyFees[a.retellAgentId]) : undefined
             }));
@@ -858,43 +858,34 @@ function UsersPageClient({ users, agents, initialTab }) {
                                                 children: [
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
                                                         className: "text-xs text-gray-500 block mb-1",
-                                                        children: "Per-min Rate"
+                                                        children: "Cost Multiplier"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/admin/users-page-client.tsx",
                                                         lineNumber: 315,
                                                         columnNumber: 23
                                                     }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                        className: "flex items-center gap-1",
-                                                        children: [
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                                className: "text-gray-400 text-sm",
-                                                                children: "$"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/components/admin/users-page-client.tsx",
-                                                                lineNumber: 317,
-                                                                columnNumber: 25
-                                                            }, this),
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
-                                                                type: "number",
-                                                                step: "0.001",
-                                                                min: "0",
-                                                                placeholder: "0.000",
-                                                                value: customPrices[agent.retellAgentId] || '',
-                                                                onChange: (e)=>setCustomPrices((prev)=>({
-                                                                            ...prev,
-                                                                            [agent.retellAgentId]: e.target.value
-                                                                        })),
-                                                                className: "w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/components/admin/users-page-client.tsx",
-                                                                lineNumber: 318,
-                                                                columnNumber: 25
-                                                            }, this)
-                                                        ]
-                                                    }, void 0, true, {
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
+                                                        type: "number",
+                                                        step: "0.01",
+                                                        min: "0",
+                                                        placeholder: "1.0",
+                                                        value: costMultipliers[agent.retellAgentId] || '',
+                                                        onChange: (e)=>setCostMultipliers((prev)=>({
+                                                                    ...prev,
+                                                                    [agent.retellAgentId]: e.target.value
+                                                                })),
+                                                        className: "w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
+                                                    }, void 0, false, {
                                                         fileName: "[project]/components/admin/users-page-client.tsx",
                                                         lineNumber: 316,
+                                                        columnNumber: 23
+                                                    }, this),
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                                        className: "text-xs text-gray-400 mt-0.5",
+                                                        children: "e.g. 1.5 = charge 1.5× Retell cost"
+                                                    }, void 0, false, {
+                                                        fileName: "[project]/components/admin/users-page-client.tsx",
+                                                        lineNumber: 325,
                                                         columnNumber: 23
                                                     }, this)
                                                 ]
@@ -924,7 +915,7 @@ function UsersPageClient({ users, agents, initialTab }) {
                                     children: "Cancel"
                                 }, void 0, false, {
                                     fileName: "[project]/components/admin/users-page-client.tsx",
-                                    lineNumber: 336,
+                                    lineNumber: 334,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Button"], {
@@ -933,13 +924,13 @@ function UsersPageClient({ users, agents, initialTab }) {
                                     children: "Save assignments"
                                 }, void 0, false, {
                                     fileName: "[project]/components/admin/users-page-client.tsx",
-                                    lineNumber: 337,
+                                    lineNumber: 335,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/admin/users-page-client.tsx",
-                            lineNumber: 335,
+                            lineNumber: 333,
                             columnNumber: 11
                         }, this)
                     ]
@@ -956,7 +947,7 @@ function UsersPageClient({ users, agents, initialTab }) {
         ]
     }, void 0, true);
 }
-_s(UsersPageClient, "7c+YodI8aWfKrZ46TrHw85RNFHc=", false, function() {
+_s(UsersPageClient, "eA3pdIjY2Dqox19M14jrzR+095I=", false, function() {
     return [
         __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"],
         __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useTransition"]

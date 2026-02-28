@@ -21,6 +21,16 @@ export async function POST(request: NextRequest) {
       call_successful?: boolean;
       user_sentiment?: string;
       total_cost?: number;
+      call_cost?: {
+        total_duration_unit_price?: number;
+        product_costs?: Array<{
+          product?: string;
+          unit_price?: number;
+          cost?: number;
+        }>;
+        combined_cost?: number;
+        total_duration_seconds?: number;
+      };
       metadata?: Record<string, unknown>;
       transcript?: string;
       transcript_object?: unknown;
@@ -71,7 +81,9 @@ export async function POST(request: NextRequest) {
           durationMs: call.duration_ms ?? null,
           callSuccessful,
           userSentiment,
-          totalCost: call.total_cost ?? null,
+          totalCost: call.total_cost
+            ?? (call.call_cost?.combined_cost ? call.call_cost.combined_cost / 100 : null),
+          costDetails: call.call_cost ? (call.call_cost as Prisma.InputJsonValue) : undefined,
           metadata: call.metadata ? (call.metadata as Prisma.InputJsonValue) : undefined,
           dynamicVariables: call.retell_llm_dynamic_variables
             ? (call.retell_llm_dynamic_variables as Prisma.InputJsonValue)
@@ -85,7 +97,9 @@ export async function POST(request: NextRequest) {
           durationMs: call.duration_ms ?? undefined,
           ...(callSuccessful !== null ? { callSuccessful } : {}),
           ...(userSentiment ? { userSentiment } : {}),
-          totalCost: call.total_cost ?? undefined,
+          totalCost: call.total_cost
+            ?? (call.call_cost?.combined_cost ? call.call_cost.combined_cost / 100 : undefined),
+          costDetails: call.call_cost ? (call.call_cost as Prisma.InputJsonValue) : undefined,
           syncedAt: new Date(),
         },
       });

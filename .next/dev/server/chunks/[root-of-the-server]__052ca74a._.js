@@ -250,7 +250,7 @@ const updateUserSchema = __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
     ]).optional(),
     agents: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v3$2f$external$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].array(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v3$2f$external$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].object({
         agentId: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v3$2f$external$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].string(),
-        customPrice: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v3$2f$external$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].number().optional(),
+        costMultiplier: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v3$2f$external$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].number().optional(),
         setupFee: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v3$2f$external$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].number().optional(),
         monthlyFee: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v3$2f$external$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].number().optional()
     })).optional()
@@ -325,7 +325,7 @@ async function PATCH(request, { params }) {
                     }
                 },
                 update: {
-                    customPrice: input?.customPrice ?? null,
+                    costMultiplier: input?.costMultiplier ?? null,
                     setupFee: input?.setupFee ?? null,
                     monthlyFee: input?.monthlyFee ?? null,
                     assignedBy: session.user.id
@@ -333,7 +333,7 @@ async function PATCH(request, { params }) {
                 create: {
                     userId: id,
                     agentId: agentRecord.id,
-                    customPrice: input?.customPrice ?? null,
+                    costMultiplier: input?.costMultiplier ?? null,
                     setupFee: input?.setupFee ?? null,
                     monthlyFee: input?.monthlyFee ?? null,
                     assignedBy: session.user.id

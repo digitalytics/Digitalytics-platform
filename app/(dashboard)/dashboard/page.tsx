@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { AgentCards } from '@/components/dashboard/agent-cards';
 import { DashboardStats } from '@/components/dashboard/dashboard-stats';
 import { RecentCallsTable } from '@/components/dashboard/recent-calls-table';
+import { computeUserCost, totalCostFromDetails } from '@/lib/call-cost-utils';
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -20,8 +21,8 @@ export default async function DashboardPage() {
     phoneNumber: string | null;
   }>;
 
-  // For non-admin users, store assignedAt + customPrice per agent
-  type UserAgentMeta = { retellAgentId: string; assignedAt: Date; customPrice: number | null };
+  // For non-admin users, store assignedAt + costMultiplier per agent
+  type UserAgentMeta = { retellAgentId: string; assignedAt: Date; costMultiplier: number | null };
   let userAgentMeta: UserAgentMeta[] = [];
 
   if (session.user.role === 'ADMIN') {
@@ -37,7 +38,7 @@ export default async function DashboardPage() {
     userAgentMeta = userAgents.map(ua => ({
       retellAgentId: ua.agent.retellAgentId,
       assignedAt: ua.assignedAt,
-      customPrice: ua.customPrice ? Number(ua.customPrice) : null,
+      costMultiplier: ua.costMultiplier ? Number(ua.costMultiplier) : null,
     }));
   }
 
@@ -81,9 +82,37 @@ export default async function DashboardPage() {
         durationMs: true,
         callSuccessful: true,
         userSentiment: true,
+        totalCost: true,
+        costDetails: true,
       },
     }),
   ]);
+
+  // Build costMultiplier map for recent calls (non-admin only)
+  const costMultiplierMap: Record<string, number | null> =
+    session.user.role === 'ADMIN'
+      ? {}
+      : Object.fromEntries(
+          userAgentMeta.map(m => [m.retellAgentId, m.costMultiplier])
+        );
+
+  const recentCallsWithCost = recentCalls.map(c => ({
+    callId:         c.callId,
+    agentId:        c.agentId,
+    agentName:      c.agentName,
+    callStatus:     c.callStatus,
+    startTimestamp: c.startTimestamp,
+    durationMs:     c.durationMs,
+    callSuccessful: c.callSuccessful,
+    userSentiment:  c.userSentiment,
+    userCost: computeUserCost(
+      c.totalCost
+        ? Number(c.totalCost)
+        : totalCostFromDetails(c.costDetails as { combined_cost?: number } | null),
+      costMultiplierMap[c.agentId],
+    ),
+    costDetails: c.costDetails ?? null,
+  }));
 
   // Per-agent call counts — filter by assignedAt for non-admin users
   let agentStats: Array<{
@@ -95,7 +124,7 @@ export default async function DashboardPage() {
     phoneNumber: string | null;
     callCount: number;
     lastCallAt: Date | null;
-    customPrice: number | null;
+    costMultiplier: number | null;
   }>;
 
   if (session.user.role === 'ADMIN') {
@@ -115,7 +144,7 @@ export default async function DashboardPage() {
       phoneNumber: agent.phoneNumber ?? null,
       callCount: agentCallCounts.find(a => a.agentId === agent.retellAgentId)?._count.callId || 0,
       lastCallAt: agentCallCounts.find(a => a.agentId === agent.retellAgentId)?._max.startTimestamp || null,
-      customPrice: null,
+      costMultiplier: null,
     }));
   } else {
     // Per-agent queries with assignedAt filter
@@ -149,7 +178,7 @@ export default async function DashboardPage() {
         phoneNumber: agent.phoneNumber ?? null,
         callCount: counts?.count ?? 0,
         lastCallAt: counts?.lastCallAt ?? null,
-        customPrice: meta?.customPrice ?? null,
+        costMultiplier: meta?.costMultiplier ?? null,
       };
     });
   }
@@ -190,7 +219,7 @@ export default async function DashboardPage() {
             View all →
           </a>
         </div>
-        <RecentCallsTable calls={recentCalls} />
+        <RecentCallsTable calls={recentCallsWithCost} />
       </div>
     </div>
   );

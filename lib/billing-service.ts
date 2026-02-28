@@ -183,28 +183,28 @@ export async function ensureCurrentInvoice(userId: string) {
 
       // Usage: only calls from max(assignedAt, periodStart) → periodEnd
       const effectiveStart = ua.assignedAt > periodStart ? ua.assignedAt : periodStart;
-      const usageAgg = ua.customPrice
+      const usageAgg = ua.costMultiplier
         ? await prisma.call.aggregate({
             where: {
               agentId:        agentRetellId,
               startTimestamp: { gte: effectiveStart, lte: periodEnd },
-              durationMs:     { not: null },
+              totalCost:      { not: null },
             },
-            _sum: { durationMs: true },
+            _sum: { totalCost: true },
           })
         : null;
 
       return {
         retellAgentId:        agentRetellId,
         agentName:            ua.agent.name,
-        setupFee:             ua.setupFee     ? Number(ua.setupFee)    : null,
+        setupFee:             ua.setupFee        ? Number(ua.setupFee)        : null,
         setupFeeAlreadyBilled,
-        monthlyFee:           ua.monthlyFee   ? Number(ua.monthlyFee)  : null,
-        customPrice:          ua.customPrice  ? Number(ua.customPrice) : null,
+        monthlyFee:           ua.monthlyFee      ? Number(ua.monthlyFee)      : null,
+        costMultiplier:       ua.costMultiplier  ? Number(ua.costMultiplier)  : null,
         assignedAt:           ua.assignedAt,
         periodStart,
         periodEnd,
-        usageMs:              usageAgg?._sum.durationMs ?? 0,
+        usageCost:            Number(usageAgg?._sum.totalCost ?? 0),
       };
     })
   );

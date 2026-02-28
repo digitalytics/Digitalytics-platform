@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { CallsPageClient } from '@/components/dashboard/calls-page-client';
+import { computeUserCost, totalCostFromDetails } from '@/lib/call-cost-utils';
 
 export default async function CallsPage({
   searchParams,
@@ -20,6 +21,7 @@ export default async function CallsPage({
 
   // Get accessible agent IDs
   let assignedAgents: Array<{ retellAgentId: string; name: string }>;
+  let costMultiplierMap: Record<string, number | null> = {};
 
   // Build the call filter where clause
   let callWhere: Record<string, unknown>;
@@ -40,6 +42,9 @@ export default async function CallsPage({
       include: { agent: { select: { retellAgentId: true, name: true, isActive: true } } },
     });
     assignedAgents = userAgents.filter(ua => ua.agent.isActive).map(ua => ua.agent);
+    costMultiplierMap = Object.fromEntries(
+      userAgents.map(ua => [ua.agent.retellAgentId, ua.costMultiplier ? Number(ua.costMultiplier) : null])
+    );
 
     if (agentId) {
       // Single agent filter: apply that agent's assignedAt
@@ -91,10 +96,30 @@ export default async function CallsPage({
         durationMs: true,
         callSuccessful: true,
         userSentiment: true,
+        totalCost: true,
+        costDetails: true,
       },
     }),
     prisma.call.count({ where: callWhere }),
   ]);
+
+  const callsWithCost = calls.map(c => ({
+    callId:         c.callId,
+    agentId:        c.agentId,
+    agentName:      c.agentName,
+    callStatus:     c.callStatus,
+    startTimestamp: c.startTimestamp.toISOString(),
+    durationMs:     c.durationMs,
+    callSuccessful: c.callSuccessful,
+    userSentiment:  c.userSentiment,
+    userCost: computeUserCost(
+      c.totalCost
+        ? Number(c.totalCost)
+        : totalCostFromDetails(c.costDetails as { combined_cost?: number } | null),
+      costMultiplierMap[c.agentId],
+    ),
+    costDetails: c.costDetails ?? null,
+  }));
 
   return (
     <div className="space-y-6">
@@ -106,7 +131,7 @@ export default async function CallsPage({
       </div>
 
       <CallsPageClient
-        initialCalls={calls as any}
+        initialCalls={callsWithCost}
         totalCalls={total}
         page={page}
         limit={limit}

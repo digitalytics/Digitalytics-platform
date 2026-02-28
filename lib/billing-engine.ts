@@ -12,12 +12,13 @@ export interface AgentInput {
   /** True when setup fee appears on a *different*, non-cancelled invoice for this user */
   setupFeeAlreadyBilled: boolean;
   monthlyFee:           number | null;
-  customPrice:          number | null;  // per-minute rate
+  /** Markup multiplier applied to Retell's actual call cost (e.g. 1.5 = charge 1.5× Retell cost) */
+  costMultiplier:       number | null;
   assignedAt:           Date;
   periodStart:          Date;
   periodEnd:            Date;
-  /** Raw call duration in ms, already filtered to [max(assignedAt, periodStart), periodEnd] */
-  usageMs:              number;
+  /** Sum of Retell totalCost in $, already filtered to [max(assignedAt, periodStart), periodEnd] */
+  usageCost:            number;
 }
 
 export interface LineItem {
@@ -61,17 +62,16 @@ export function buildLineItems(agents: AgentInput[]): LineItem[] {
       });
     }
 
-    // USAGE_FEE — usageMs is pre-filtered from DB (assignedAt lower bound already applied)
-    if (ag.customPrice && ag.usageMs > 0) {
-      const minutes = ag.usageMs / 60000;
-      const total   = Math.round(minutes * ag.customPrice * 100) / 100;
+    // USAGE_FEE — usageCost is pre-filtered from DB (assignedAt lower bound already applied)
+    if (ag.costMultiplier && ag.usageCost > 0) {
+      const total = Math.round(ag.usageCost * ag.costMultiplier * 100) / 100;
       items.push({
         type:        'USAGE_FEE',
         agentId:     ag.retellAgentId,
         agentName:   ag.agentName,
-        description: `Usage — ${ag.agentName} (${minutes.toFixed(4)} min)`,
-        quantity:    Math.round(minutes * 10000) / 10000,
-        unitPrice:   ag.customPrice,
+        description: `Usage — ${ag.agentName}`,
+        quantity:    ag.usageCost,
+        unitPrice:   ag.costMultiplier,
         total,
       });
     }

@@ -160,7 +160,7 @@ model UserAgent {
   id          String   @id @default(cuid())
   userId      String   @map("user_id")
   agentId     String   @map("agent_id")
-  customPrice  Decimal? @map("custom_price")  @db.Decimal(10, 6) // per-minute usage rate shown to user
+  costMultiplier Decimal? @map("cost_multiplier") @db.Decimal(10, 4) // Markup multiplier applied to Retell's actual call cost (e.g. 1.5 = charge 1.5× Retell cost)
   setupFee     Decimal? @map("setup_fee")     @db.Decimal(10, 2) // one-time setup charge
   setupFeePaid Boolean  @default(false)        @map("setup_fee_paid")
   monthlyFee   Decimal? @map("monthly_fee")   @db.Decimal(10, 2) // recurring monthly charge

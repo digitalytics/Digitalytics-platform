@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Activity, Phone, DollarSign, PhoneCall, PhoneOff, Clock, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { formatDuration, formatDate } from '@/lib/utils';
+import { computeUserCost, totalCostFromDetails } from '@/lib/call-cost-utils';
 import { CopyButton } from '@/components/dashboard/copy-button';
 
 export default async function AgentDetailPage({
@@ -28,7 +29,7 @@ export default async function AgentDetailPage({
     phoneNumber: string | null;
   };
   let assignedAt: Date | null = null;
-  let customPrice: number | null = null;
+  let costMultiplier: number | null = null;
 
   if (isAdmin) {
     const found = await prisma.agent.findUnique({ where: { id: agentId } });
@@ -42,7 +43,7 @@ export default async function AgentDetailPage({
     if (!userAgent) notFound();
     agent = userAgent.agent;
     assignedAt = userAgent.assignedAt;
-    customPrice = userAgent.customPrice ? Number(userAgent.customPrice) : null;
+    costMultiplier = userAgent.costMultiplier ? Number(userAgent.costMultiplier) : null;
   }
 
   const callWhere = assignedAt
@@ -70,9 +71,29 @@ export default async function AgentDetailPage({
         durationMs: true,
         callSuccessful: true,
         userSentiment: true,
+        totalCost: true,
+        costDetails: true,
       },
     }),
   ]);
+
+  const recentCallsWithCost = recentCalls.map(c => ({
+    callId:         c.callId,
+    agentId:        c.agentId,
+    agentName:      c.agentName,
+    callStatus:     c.callStatus,
+    startTimestamp: c.startTimestamp,
+    durationMs:     c.durationMs,
+    callSuccessful: c.callSuccessful,
+    userSentiment:  c.userSentiment,
+    userCost: computeUserCost(
+      c.totalCost
+        ? Number(c.totalCost)
+        : totalCostFromDetails(c.costDetails as { combined_cost?: number } | null),
+      costMultiplier,
+    ),
+    costDetails: c.costDetails ?? null,
+  }));
 
   const avgDurationMs = Math.round(durationAgg._avg.durationMs || 0);
 
@@ -148,12 +169,12 @@ export default async function AgentDetailPage({
               <CopyButton text={agent.phoneNumber} />
             </div>
           )}
-          {customPrice !== null && (
+          {costMultiplier !== null && (
             <div className="flex items-center gap-1.5 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-1.5">
               <DollarSign size={13} className="text-[#004D3E]" />
               <span>
-                <span className="font-medium">${customPrice.toFixed(4)}</span>
-                <span className="text-gray-400 ml-1">/ min (your rate)</span>
+                <span className="font-medium">{costMultiplier}×</span>
+                <span className="text-gray-400 ml-1">Custom rate applied</span>
               </span>
             </div>
           )}
@@ -189,7 +210,7 @@ export default async function AgentDetailPage({
             View all →
           </Link>
         </div>
-        <RecentCallsTable calls={recentCalls} />
+        <RecentCallsTable calls={recentCallsWithCost} />
       </div>
     </div>
   );

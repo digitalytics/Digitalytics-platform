@@ -7,10 +7,10 @@ const updateUserSchema = z.object({
   status: z.enum(['PENDING', 'ACTIVE', 'INACTIVE']).optional(),
   role: z.enum(['ADMIN', 'USER']).optional(),
   agents: z.array(z.object({
-    agentId:     z.string(),
-    customPrice: z.number().optional(),
-    setupFee:    z.number().optional(),
-    monthlyFee:  z.number().optional(),
+    agentId:        z.string(),
+    costMultiplier: z.number().optional(),
+    setupFee:       z.number().optional(),
+    monthlyFee:     z.number().optional(),
   })).optional(),
 });
 
@@ -67,19 +67,19 @@ export async function PATCH(
       await prisma.userAgent.upsert({
         where:  { userId_agentId: { userId: id, agentId: agentRecord.id } },
         update: {
-          customPrice: input?.customPrice ?? null,
-          setupFee:    input?.setupFee    ?? null,
-          monthlyFee:  input?.monthlyFee  ?? null,
-          assignedBy:  session.user.id,
+          costMultiplier: input?.costMultiplier ?? null,
+          setupFee:       input?.setupFee       ?? null,
+          monthlyFee:     input?.monthlyFee     ?? null,
+          assignedBy:     session.user.id,
           // assignedAt intentionally NOT updated — preserves call log visibility
         },
         create: {
-          userId:      id,
-          agentId:     agentRecord.id,
-          customPrice: input?.customPrice ?? null,
-          setupFee:    input?.setupFee    ?? null,
-          monthlyFee:  input?.monthlyFee  ?? null,
-          assignedBy:  session.user.id,
+          userId:         id,
+          agentId:        agentRecord.id,
+          costMultiplier: input?.costMultiplier ?? null,
+          setupFee:       input?.setupFee       ?? null,
+          monthlyFee:     input?.monthlyFee     ?? null,
+          assignedBy:     session.user.id,
         },
       });
     }

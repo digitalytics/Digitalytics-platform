@@ -14,17 +14,17 @@ import { Button } from '@/components/ui/button';
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface BillingAgent {
-  retellAgentId: string;
-  name:          string;
-  isActive:      boolean;
-  phoneNumber:   string | null;
-  assignedAt:    string;
-  setupFee:      number | null;
-  setupFeePaid:  boolean;
-  monthlyFee:    number | null;
-  customPrice:   number | null;
-  usageMinutes:  number;
-  usageCost:     number;
+  retellAgentId:  string;
+  name:           string;
+  isActive:       boolean;
+  phoneNumber:    string | null;
+  assignedAt:     string;
+  setupFee:       number | null;
+  setupFeePaid:   boolean;
+  monthlyFee:     number | null;
+  costMultiplier: number | null;
+  retellCost:     number;
+  usageCost:      number;
 }
 
 interface LineItem {
@@ -155,10 +155,10 @@ function InvoiceCard({ invoice }: { invoice: Invoice }) {
                     {li.agentName && <p className="text-xs text-gray-400 mt-0.5">{li.agentName}</p>}
                   </td>
                   <td className="px-5 py-3 text-right text-gray-600 tabular-nums">
-                    {li.type === 'USAGE_FEE' ? `${li.quantity.toFixed(4)} min` : li.quantity}
+                    {li.type === 'USAGE_FEE' ? '—' : li.quantity}
                   </td>
                   <td className="px-5 py-3 text-right text-gray-600 tabular-nums">
-                    {li.type === 'USAGE_FEE' ? `${formatCost(li.unitPrice)}/min` : formatMoney(li.unitPrice)}
+                    {li.type === 'USAGE_FEE' ? '—' : formatMoney(li.unitPrice)}
                   </td>
                   <td className="px-5 py-3 text-right font-semibold text-gray-900 tabular-nums">
                     {formatMoney(li.total)}
@@ -381,16 +381,16 @@ export function BillingPageClient({
                 <div>
                   <p className="text-sm font-medium text-gray-700">Usage This Month</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {agent.customPrice != null
-                      ? <>{agent.usageMinutes.toFixed(4)} min &times; {formatCost(agent.customPrice)}/min</>
-                      : 'No usage rate configured'}
+                    {agent.costMultiplier != null
+                      ? 'Usage charged this period'
+                      : 'No multiplier configured'}
                   </p>
                 </div>
                 <div className="text-right">
                   <span className="text-sm font-semibold text-gray-900">
-                    {agent.customPrice != null ? formatMoney(agent.usageCost) : '—'}
+                    {agent.costMultiplier != null ? formatMoney(agent.usageCost) : '—'}
                   </span>
-                  {agent.customPrice != null && (
+                  {agent.costMultiplier != null && (
                     <p className="text-xs text-gray-400 mt-0.5">this month</p>
                   )}
                 </div>
@@ -404,7 +404,7 @@ export function BillingPageClient({
                 {formatMoney(
                   (agent.setupFeePaid ? 0 : (agent.setupFee ?? 0)) +
                   (agent.monthlyFee ?? 0) +
-                  (agent.customPrice != null ? agent.usageCost : 0)
+                  (agent.costMultiplier != null ? agent.usageCost : 0)
                 )}
               </span>
             </div>
@@ -427,7 +427,7 @@ export function BillingPageClient({
             {formatMoney(
               outstandingSetup +
               totalMonthly +
-              agents.reduce((s, a) => s + (a.customPrice != null ? a.usageCost : 0), 0)
+              agents.reduce((s, a) => s + (a.costMultiplier != null ? a.usageCost : 0), 0)
             )}
           </p>
         </div>

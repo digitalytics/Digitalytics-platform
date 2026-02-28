@@ -92,17 +92,16 @@ function buildLineItems(agents) {
                 total: ag.monthlyFee
             });
         }
-        // USAGE_FEE — usageMs is pre-filtered from DB (assignedAt lower bound already applied)
-        if (ag.customPrice && ag.usageMs > 0) {
-            const minutes = ag.usageMs / 60000;
-            const total = Math.round(minutes * ag.customPrice * 100) / 100;
+        // USAGE_FEE — usageCost is pre-filtered from DB (assignedAt lower bound already applied)
+        if (ag.costMultiplier && ag.usageCost > 0) {
+            const total = Math.round(ag.usageCost * ag.costMultiplier * 100) / 100;
             items.push({
                 type: 'USAGE_FEE',
                 agentId: ag.retellAgentId,
                 agentName: ag.agentName,
-                description: `Usage — ${ag.agentName} (${minutes.toFixed(4)} min)`,
-                quantity: Math.round(minutes * 10000) / 10000,
-                unitPrice: ag.customPrice,
+                description: `Usage — ${ag.agentName}`,
+                quantity: ag.usageCost,
+                unitPrice: ag.costMultiplier,
                 total
             });
         }
@@ -294,19 +293,19 @@ async function ensureCurrentInvoice(userId) {
         }) : false;
         // Usage: only calls from max(assignedAt, periodStart) → periodEnd
         const effectiveStart = ua.assignedAt > periodStart ? ua.assignedAt : periodStart;
-        const usageAgg = ua.customPrice ? await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.aggregate({
+        const usageAgg = ua.costMultiplier ? await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.aggregate({
             where: {
                 agentId: agentRetellId,
                 startTimestamp: {
                     gte: effectiveStart,
                     lte: periodEnd
                 },
-                durationMs: {
+                totalCost: {
                     not: null
                 }
             },
             _sum: {
-                durationMs: true
+                totalCost: true
             }
         }) : null;
         return {
@@ -315,11 +314,11 @@ async function ensureCurrentInvoice(userId) {
             setupFee: ua.setupFee ? Number(ua.setupFee) : null,
             setupFeeAlreadyBilled,
             monthlyFee: ua.monthlyFee ? Number(ua.monthlyFee) : null,
-            customPrice: ua.customPrice ? Number(ua.customPrice) : null,
+            costMultiplier: ua.costMultiplier ? Number(ua.costMultiplier) : null,
             assignedAt: ua.assignedAt,
             periodStart,
             periodEnd,
-            usageMs: usageAgg?._sum.durationMs ?? 0
+            usageCost: Number(usageAgg?._sum.totalCost ?? 0)
         };
     }));
     const lineItems = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["buildLineItems"])(agentInputs);
@@ -484,9 +483,9 @@ async function BillingPage() {
     const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     // Live usage per agent
     const usageByAgent = await Promise.all(userAgents.map(async (ua)=>{
-        if (!ua.customPrice) return {
+        if (!ua.costMultiplier) return {
             retellAgentId: ua.agent.retellAgentId,
-            minutes: 0,
+            retellCost: 0,
             cost: 0
         };
         const agg = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.aggregate({
@@ -496,19 +495,19 @@ async function BillingPage() {
                     gte: ua.assignedAt > periodStart ? ua.assignedAt : periodStart,
                     lte: periodEnd
                 },
-                durationMs: {
+                totalCost: {
                     not: null
                 }
             },
             _sum: {
-                durationMs: true
+                totalCost: true
             }
         });
-        const minutes = (agg._sum.durationMs ?? 0) / 60000;
-        const cost = Math.round(minutes * Number(ua.customPrice) * 100) / 100;
+        const retellCost = Number(agg._sum.totalCost ?? 0);
+        const cost = Math.round(retellCost * Number(ua.costMultiplier) * 100) / 100;
         return {
             retellAgentId: ua.agent.retellAgentId,
-            minutes,
+            retellCost,
             cost
         };
     }));
@@ -525,8 +524,8 @@ async function BillingPage() {
             setupFee: ua.setupFee ? Number(ua.setupFee) : null,
             setupFeePaid: ua.setupFeePaid,
             monthlyFee: ua.monthlyFee ? Number(ua.monthlyFee) : null,
-            customPrice: ua.customPrice ? Number(ua.customPrice) : null,
-            usageMinutes: usageMap[ua.agent.retellAgentId]?.minutes ?? 0,
+            costMultiplier: ua.costMultiplier ? Number(ua.costMultiplier) : null,
+            retellCost: usageMap[ua.agent.retellAgentId]?.retellCost ?? 0,
             usageCost: usageMap[ua.agent.retellAgentId]?.cost ?? 0
         }));
     // Fetch all non-cancelled invoices, newest first

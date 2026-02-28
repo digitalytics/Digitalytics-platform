@@ -17,7 +17,7 @@ interface Agent {
   phoneNumber: string | null;
   callCount: number;
   lastCallAt: Date | null;
-  customPrice: number | null;
+  costMultiplier: number | null;
 }
 
 export function AgentCards({ agents }: { agents: Agent[] }) {
@@ -61,10 +61,10 @@ export function AgentCards({ agents }: { agents: Agent[] }) {
               </div>
             )}
 
-            {agent.customPrice !== null && (
+            {agent.costMultiplier !== null && (
               <div className="flex items-center gap-1 text-xs text-gray-500 mb-3 bg-gray-50 rounded-lg px-2.5 py-1.5">
                 <DollarSign size={11} className="text-[#004D3E]" />
-                <span>${agent.customPrice.toFixed(4)} / min</span>
+                <span>{agent.costMultiplier}× Retell cost</span>
               </div>
             )}
 

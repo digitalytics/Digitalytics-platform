@@ -116,7 +116,8 @@ async function POST(request) {
                     durationMs: call.duration_ms ?? null,
                     callSuccessful,
                     userSentiment,
-                    totalCost: call.total_cost ?? null,
+                    totalCost: call.total_cost ?? (call.call_cost?.combined_cost ? call.call_cost.combined_cost / 100 : null),
+                    costDetails: call.call_cost ? call.call_cost : undefined,
                     metadata: call.metadata ? call.metadata : undefined,
                     dynamicVariables: call.retell_llm_dynamic_variables ? call.retell_llm_dynamic_variables : undefined,
                     syncedAt: new Date()
@@ -132,7 +133,8 @@ async function POST(request) {
                     ...userSentiment ? {
                         userSentiment
                     } : {},
-                    totalCost: call.total_cost ?? undefined,
+                    totalCost: call.total_cost ?? (call.call_cost?.combined_cost ? call.call_cost.combined_cost / 100 : undefined),
+                    costDetails: call.call_cost ? call.call_cost : undefined,
                     syncedAt: new Date()
                 }
             });
