@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Receipt, Calendar, Bot, CheckCircle, Clock,
   ChevronDown, ChevronUp, CreditCard, FileText, Loader2,
 } from 'lucide-react';
-import { formatMoney, formatCost, formatDate } from '@/lib/utils';
-import { resolveGetBillButton } from '@/lib/billing-service';
+import { formatMoney, formatDate } from '@/lib/utils';
+import { resolveGetBillButton, getOldestOverdueInvoice, resolveInvoicePayability } from '@/lib/billing-service';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
@@ -84,9 +84,16 @@ function formatPeriod(start: string) {
 
 // ── Invoice Card ───────────────────────────────────────────────────────────────
 
-function InvoiceCard({ invoice }: { invoice: Invoice }) {
+interface InvoiceCardProps {
+  invoice:      Invoice;
+  canPay:       boolean;
+  onPay:        () => void;
+  isPaying:     boolean;
+  blockMessage: string | null;
+}
+
+function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: InvoiceCardProps) {
   const [open, setOpen] = useState(false);
-  const isPayable = PAYABLE_STATUSES.has(invoice.status);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -118,12 +125,25 @@ function InvoiceCard({ invoice }: { invoice: Invoice }) {
             <p className="text-xs text-gray-400">total due</p>
           </div>
 
-          {isPayable && (
-            <Button size="sm" className="gap-1.5">
-              <CreditCard className="w-3.5 h-3.5" />
-              Pay Now
-            </Button>
-          )}
+          <div className="flex flex-col items-end gap-1">
+            {(canPay || PAYABLE_STATUSES.has(invoice.status)) && (
+              <Button
+                size="sm"
+                className="gap-1.5"
+                disabled={!canPay || isPaying}
+                onClick={onPay}
+              >
+                {isPaying ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Processing…</>
+                ) : (
+                  <><CreditCard className="w-3.5 h-3.5" /> Pay Now</>
+                )}
+              </Button>
+            )}
+            {blockMessage && (
+              <p className="text-xs text-amber-600 mt-1">{blockMessage}</p>
+            )}
+          </div>
 
           <button
             onClick={() => setOpen(v => !v)}
@@ -192,9 +212,14 @@ export function BillingPageClient({
   activeCount,
 }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const paymentStatus = searchParams.get('payment'); // 'success' | 'cancelled' | null
 
   const totalOutstanding = invoices
     .filter(inv => PAYABLE_STATUSES.has(inv.status))
@@ -206,6 +231,8 @@ export function BillingPageClient({
     new Date(inv.periodStart) <= now && now <= new Date(inv.periodEnd)
   ) ?? null;
   const pastInvoices = invoices.filter(inv => inv !== currentInvoice);
+
+  const overdueBlocker = getOldestOverdueInvoice(invoices);
 
   const btnState = resolveGetBillButton(
     (currentInvoice?.status ?? null) as Parameters<typeof resolveGetBillButton>[0]
@@ -226,6 +253,21 @@ export function BillingPageClient({
       setGenerateError('Network error. Please try again.');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handlePay = async (invoiceId: string) => {
+    setPayingInvoiceId(invoiceId);
+    setPayError(null);
+    try {
+      const res  = await fetch(`/api/billing/invoices/${invoiceId}/pay`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { setPayError(data.error ?? 'Payment failed.'); return; }
+      window.location.href = data.checkoutUrl;
+    } catch {
+      setPayError('Network error. Please try again.');
+    } finally {
+      setPayingInvoiceId(null);
     }
   };
 
@@ -283,6 +325,23 @@ export function BillingPageClient({
 
       </div>
 
+      {/* ── Payment result banners ───────────────────────────────────────── */}
+      {paymentStatus === 'success' && (
+        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-2 text-green-800">
+          <CheckCircle className="w-4 h-4 flex-shrink-0" />
+          <p className="text-sm font-medium">Payment successful! Your invoice has been marked as paid.</p>
+        </div>
+      )}
+      {paymentStatus === 'cancelled' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2 text-amber-800">
+          <Clock className="w-4 h-4 flex-shrink-0" />
+          <p className="text-sm font-medium">Payment was cancelled. Your invoice is still outstanding.</p>
+        </div>
+      )}
+      {payError && (
+        <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{payError}</p>
+      )}
+
       {/* ── This month's invoice ─────────────────────────────────────────── */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -304,9 +363,18 @@ export function BillingPageClient({
           <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{generateError}</p>
         )}
 
-        {currentInvoice ? (
-          <InvoiceCard invoice={currentInvoice} />
-        ) : (
+        {currentInvoice ? (() => {
+          const { canPay, blockMessage } = resolveInvoicePayability(currentInvoice, overdueBlocker);
+          return (
+            <InvoiceCard
+              invoice={currentInvoice}
+              canPay={canPay}
+              onPay={() => handlePay(currentInvoice.id)}
+              isPaying={payingInvoiceId === currentInvoice.id}
+              blockMessage={blockMessage}
+            />
+          );
+        })() : (
           <div className="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center">
             <p className="text-sm text-gray-400">No invoice generated yet. Click "Get Bill" above.</p>
           </div>
@@ -437,9 +505,28 @@ export function BillingPageClient({
       {pastInvoices.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-base font-semibold text-gray-900">Invoice History</h2>
-          {pastInvoices.map(inv => (
-            <InvoiceCard key={inv.id} invoice={inv} />
-          ))}
+
+          {overdueBlocker && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-800">
+              <p className="text-sm font-medium">
+                You have an overdue invoice. Please pay it before paying other invoices.
+              </p>
+            </div>
+          )}
+
+          {pastInvoices.map(inv => {
+            const { canPay, blockMessage } = resolveInvoicePayability(inv, overdueBlocker);
+            return (
+              <InvoiceCard
+                key={inv.id}
+                invoice={inv}
+                canPay={canPay}
+                onPay={() => handlePay(inv.id)}
+                isPaying={payingInvoiceId === inv.id}
+                blockMessage={blockMessage}
+              />
+            );
+          })}
         </div>
       )}
 

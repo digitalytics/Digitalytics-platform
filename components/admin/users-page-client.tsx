@@ -160,7 +160,7 @@ export function UsersPageClient({
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Agents</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Joined</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Assignments & Payments</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -243,7 +243,7 @@ export function UsersPageClient({
                         onClick={() => openAssignModal(user)}
                       >
                         <Edit size={13} />
-                        Agents
+                        Set Pricing
                       </Button>
                     </div>
                   </td>

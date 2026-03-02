@@ -33,6 +33,42 @@ export type InvoiceAction =
   | { type: 'recalculate'; invoiceId: string }
   | { type: 'noop';        invoiceId: string };
 
+// ── Pay-priority helpers (exported for tests + client) ────────────────────────
+
+/**
+ * Returns the oldest OVERDUE invoice (by periodStart ASC), or null if none.
+ */
+export function getOldestOverdueInvoice(
+  invoices: Array<{ id: string; status: string; periodStart: string }>
+): { id: string; status: string; periodStart: string } | null {
+  const overdue = invoices.filter(inv => inv.status === 'OVERDUE');
+  if (overdue.length === 0) return null;
+  return overdue.sort((a, b) => a.periodStart.localeCompare(b.periodStart))[0];
+}
+
+/**
+ * Determines whether Pay Now is enabled for this invoice.
+ * overdueBlocker: result of getOldestOverdueInvoice() called on all invoices.
+ */
+export function resolveInvoicePayability(
+  invoice: { id: string; status: string },
+  overdueBlocker: { id: string } | null,
+): { canPay: boolean; blockMessage: string | null } {
+  // Already settled — cannot pay
+  if (invoice.status === 'PAID' || invoice.status === 'CANCELLED') {
+    return { canPay: false, blockMessage: null };
+  }
+  // Payment already in-flight
+  if (invoice.status === 'PENDING') {
+    return { canPay: false, blockMessage: null };
+  }
+  // DRAFT or OVERDUE — check blocker
+  if (overdueBlocker && overdueBlocker.id !== invoice.id) {
+    return { canPay: false, blockMessage: 'Please pay overdue invoice first.' };
+  }
+  return { canPay: true, blockMessage: null };
+}
+
 // ── Pure helpers (exported for tests) ─────────────────────────────────────────
 
 /**

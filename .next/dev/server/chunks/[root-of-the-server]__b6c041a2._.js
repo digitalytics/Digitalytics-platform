@@ -303,10 +303,14 @@ __turbopack_context__.s([
     ()=>buildInvoiceNumber,
     "ensureCurrentInvoice",
     ()=>ensureCurrentInvoice,
+    "getOldestOverdueInvoice",
+    ()=>getOldestOverdueInvoice,
     "resolveGetBillButton",
     ()=>resolveGetBillButton,
     "resolveInvoiceAction",
-    ()=>resolveInvoiceAction
+    ()=>resolveInvoiceAction,
+    "resolveInvoicePayability",
+    ()=>resolveInvoicePayability
 ]);
 /**
  * Billing service — orchestrates billing-engine (pure) + Prisma.
@@ -322,6 +326,38 @@ __turbopack_context__.s([
 var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/lib/billing-engine.ts [app-route] (ecmascript)");
 ;
 ;
+function getOldestOverdueInvoice(invoices) {
+    const overdue = invoices.filter((inv)=>inv.status === 'OVERDUE');
+    if (overdue.length === 0) return null;
+    return overdue.sort((a, b)=>a.periodStart.localeCompare(b.periodStart))[0];
+}
+function resolveInvoicePayability(invoice, overdueBlocker) {
+    // Already settled — cannot pay
+    if (invoice.status === 'PAID' || invoice.status === 'CANCELLED') {
+        return {
+            canPay: false,
+            blockMessage: null
+        };
+    }
+    // Payment already in-flight
+    if (invoice.status === 'PENDING') {
+        return {
+            canPay: false,
+            blockMessage: null
+        };
+    }
+    // DRAFT or OVERDUE — check blocker
+    if (overdueBlocker && overdueBlocker.id !== invoice.id) {
+        return {
+            canPay: false,
+            blockMessage: 'Please pay overdue invoice first.'
+        };
+    }
+    return {
+        canPay: true,
+        blockMessage: null
+    };
+}
 function resolveGetBillButton(status) {
     if (status === 'DRAFT') return {
         label: 'Update Bill',
