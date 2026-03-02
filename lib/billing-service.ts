@@ -98,9 +98,11 @@ export function resolveInvoicePayability(
 export function resolveGetBillButton(
   status: InvoiceStatus | null
 ): { label: string; disabled: boolean } {
-  if (status === 'DRAFT')                     return { label: 'Update Bill', disabled: false };
-  if (!status || status === 'CANCELLED')       return { label: 'Get Bill',    disabled: false };
-  // PENDING / PAID / OVERDUE — invoice is finalised, cannot regenerate
+  if (status === 'DRAFT')               return { label: 'Update Bill', disabled: false };
+  if (!status || status === 'CANCELLED') return { label: 'Get Bill',    disabled: false };
+  // PAID — invoice is paid but new calls may have accrued; allow supplement invoice
+  if (status === 'PAID')                return { label: 'Get Bill',    disabled: false };
+  // PENDING / OVERDUE — payment in-flight or past-due; don't regenerate
   return { label: 'Get Bill', disabled: true };
 }
 
@@ -161,7 +163,13 @@ export async function autoMarkOverdueForUser(userId: string): Promise<void> {
 /**
  * Ensures a current-month invoice exists for the user.
  * Auto-generates or recalculates as needed (idempotent).
- * Never modifies PENDING / PAID / OVERDUE invoices.
+ *
+ * Priority order for current-period invoices:
+ *   1. DRAFT     → recalculate (picks up any new usage)
+ *   2. PENDING   → noop (payment in-flight, don't touch)
+ *   3. OVERDUE   → noop (past-due, handled by payment flow)
+ *   4. PAID only → create a new DRAFT supplement invoice for remaining calls
+ *   5. None      → create a fresh DRAFT invoice
  *
  * Returns the invoice (with line items) after any writes.
  */
@@ -170,24 +178,132 @@ export async function ensureCurrentInvoice(userId: string) {
   const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const periodEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-  // Find the active (non-cancelled) invoice for this period, if any
-  const existing = await prisma.invoice.findFirst({
+  // Find ALL non-cancelled invoices for the current period (paidAt needed for supplement start)
+  const periodInvoices = await prisma.invoice.findMany({
     where:  { userId, periodStart, status: { not: 'CANCELLED' } },
-    select: { id: true, status: true },
+    select: { id: true, status: true, paidAt: true },
   });
 
-  const action = resolveInvoiceAction(
-    existing ? { id: existing.id, status: existing.status as InvoiceStatus } : null
-  );
+  // If a PAID invoice exists for this period, supplement invoices must only count calls
+  // that occurred AFTER that payment — otherwise the same calls get billed twice.
+  const mostRecentPaidAt = periodInvoices
+    .filter(inv => inv.status === 'PAID' && inv.paidAt != null)
+    .reduce((latest: Date | null, inv) =>
+      latest == null || inv.paidAt! > latest ? inv.paidAt! : latest, null
+    );
 
-  // NOOP — invoice is finalised, just return it
-  if (action.type === 'noop') {
+  // 1. Prefer DRAFT — recalculate it to pick up new usage
+  const draftInvoice = periodInvoices.find(inv => inv.status === 'DRAFT');
+  if (draftInvoice) {
+    // Use the recalculate path by synthesising the action
+    const action = { type: 'recalculate' as const, invoiceId: draftInvoice.id };
+
+    // Fetch user's agent assignments (needed below)
+    const userAgentsForRecalc = await prisma.userAgent.findMany({
+      where:   { userId },
+      include: { agent: true },
+    });
+    if (userAgentsForRecalc.length === 0) return null;
+
+    const agentInputsForRecalc: AgentInput[] = await Promise.all(
+      userAgentsForRecalc.map(async ua => {
+        const agentRetellId = ua.agent.retellAgentId;
+        const setupFeeAlreadyBilled = ua.setupFee
+          ? !!(await prisma.invoiceLineItem.findFirst({
+              where: {
+                type:    'SETUP_FEE',
+                agentId: agentRetellId,
+                invoice: {
+                  userId,
+                  status: { not: 'CANCELLED' },
+                  id:     { not: action.invoiceId },
+                },
+              },
+            }))
+          : false;
+        // Monthly fee: already on a different non-cancelled invoice for this same period?
+        const monthlyFeeAlreadyBilled = ua.monthlyFee
+          ? !!(await prisma.invoiceLineItem.findFirst({
+              where: {
+                type:    'MONTHLY_FEE',
+                agentId: agentRetellId,
+                invoice: {
+                  userId,
+                  periodStart,
+                  status: { not: 'CANCELLED' },
+                  id:     { not: action.invoiceId },
+                },
+              },
+            }))
+          : false;
+        // For supplement invoices (DRAFT alongside a PAID invoice for this period),
+        // only count calls AFTER the most recent payment to avoid double-billing.
+        const baseStart     = ua.assignedAt > periodStart ? ua.assignedAt : periodStart;
+        const effectiveStart = mostRecentPaidAt && mostRecentPaidAt > baseStart
+          ? mostRecentPaidAt
+          : baseStart;
+        const usageAgg = ua.costMultiplier
+          ? await prisma.call.aggregate({
+              where: {
+                agentId:        agentRetellId,
+                startTimestamp: { gte: effectiveStart, lte: periodEnd },
+                totalCost:      { not: null },
+              },
+              _sum: { totalCost: true },
+            })
+          : null;
+        return {
+          retellAgentId:           agentRetellId,
+          agentName:               ua.agent.name,
+          setupFee:                ua.setupFee        ? Number(ua.setupFee)        : null,
+          setupFeeAlreadyBilled,
+          monthlyFee:              ua.monthlyFee      ? Number(ua.monthlyFee)      : null,
+          monthlyFeeAlreadyBilled,
+          costMultiplier:          ua.costMultiplier  ? Number(ua.costMultiplier)  : null,
+          assignedAt:              ua.assignedAt,
+          periodStart,
+          periodEnd,
+          usageCost:               Number(usageAgg?._sum.totalCost ?? 0),
+        };
+      })
+    );
+
+    const lineItemsForRecalc = buildLineItems(agentInputsForRecalc);
+    await prisma.$transaction(async tx => {
+      await tx.invoiceLineItem.deleteMany({ where: { invoiceId: action.invoiceId } });
+      if (lineItemsForRecalc.length > 0) {
+        await tx.invoiceLineItem.createMany({
+          data: lineItemsForRecalc.map(item => ({
+            invoiceId:   action.invoiceId,
+            type:        item.type,
+            agentId:     item.agentId,
+            agentName:   item.agentName,
+            description: item.description,
+            quantity:    item.quantity,
+            unitPrice:   item.unitPrice,
+            total:       item.total,
+          })),
+        });
+      }
+      const newSubtotal = Math.round(lineItemsForRecalc.reduce((s, l) => s + l.total, 0) * 100) / 100;
+      await tx.invoice.update({ where: { id: action.invoiceId }, data: { subtotal: newSubtotal, total: newSubtotal } });
+    });
     return prisma.invoice.findUnique({
       where:   { id: action.invoiceId },
       include: { lineItems: { orderBy: { type: 'asc' } } },
     });
   }
 
+  // 2. PENDING or OVERDUE → noop (payment in-flight or past-due)
+  const lockedInvoice = periodInvoices.find(inv => inv.status === 'PENDING' || inv.status === 'OVERDUE');
+  if (lockedInvoice) {
+    return prisma.invoice.findUnique({
+      where:   { id: lockedInvoice.id },
+      include: { lineItems: { orderBy: { type: 'asc' } } },
+    });
+  }
+
+  // 3. All PAID (supplement) or no invoices → CREATE fresh DRAFT
   // Fetch user's agent assignments
   const userAgents = await prisma.userAgent.findMany({
     where:   { userId },
@@ -201,24 +317,37 @@ export async function ensureCurrentInvoice(userId: string) {
     userAgents.map(async ua => {
       const agentRetellId = ua.agent.retellAgentId;
 
-      // Setup fee already billed on a *different* non-cancelled invoice?
+      // Setup fee already billed on any non-cancelled invoice?
       const setupFeeAlreadyBilled = ua.setupFee
         ? !!(await prisma.invoiceLineItem.findFirst({
             where: {
               type:    'SETUP_FEE',
               agentId: agentRetellId,
+              invoice: { userId, status: { not: 'CANCELLED' } },
+            },
+          }))
+        : false;
+
+      // Monthly fee: already on any non-cancelled invoice for this same period?
+      const monthlyFeeAlreadyBilled = ua.monthlyFee
+        ? !!(await prisma.invoiceLineItem.findFirst({
+            where: {
+              type:    'MONTHLY_FEE',
+              agentId: agentRetellId,
               invoice: {
                 userId,
+                periodStart,
                 status: { not: 'CANCELLED' },
-                // When recalculating, exclude the current draft
-                ...(action.type === 'recalculate' ? { id: { not: action.invoiceId } } : {}),
               },
             },
           }))
         : false;
 
-      // Usage: only calls from max(assignedAt, periodStart) → periodEnd
-      const effectiveStart = ua.assignedAt > periodStart ? ua.assignedAt : periodStart;
+      // Supplement invoice: only count calls AFTER the most recent payment to avoid double-billing.
+      const baseStart      = ua.assignedAt > periodStart ? ua.assignedAt : periodStart;
+      const effectiveStart = mostRecentPaidAt && mostRecentPaidAt > baseStart
+        ? mostRecentPaidAt
+        : baseStart;
       const usageAgg = ua.costMultiplier
         ? await prisma.call.aggregate({
             where: {
@@ -231,16 +360,17 @@ export async function ensureCurrentInvoice(userId: string) {
         : null;
 
       return {
-        retellAgentId:        agentRetellId,
-        agentName:            ua.agent.name,
-        setupFee:             ua.setupFee        ? Number(ua.setupFee)        : null,
+        retellAgentId:           agentRetellId,
+        agentName:               ua.agent.name,
+        setupFee:                ua.setupFee        ? Number(ua.setupFee)        : null,
         setupFeeAlreadyBilled,
-        monthlyFee:           ua.monthlyFee      ? Number(ua.monthlyFee)      : null,
-        costMultiplier:       ua.costMultiplier  ? Number(ua.costMultiplier)  : null,
-        assignedAt:           ua.assignedAt,
+        monthlyFee:              ua.monthlyFee      ? Number(ua.monthlyFee)      : null,
+        monthlyFeeAlreadyBilled,
+        costMultiplier:          ua.costMultiplier  ? Number(ua.costMultiplier)  : null,
+        assignedAt:              ua.assignedAt,
         periodStart,
         periodEnd,
-        usageCost:            Number(usageAgg?._sum.totalCost ?? 0),
+        usageCost:               Number(usageAgg?._sum.totalCost ?? 0),
       };
     })
   );
@@ -248,46 +378,6 @@ export async function ensureCurrentInvoice(userId: string) {
   const lineItems = buildLineItems(agentInputs);
   if (lineItems.length === 0) return null;
   const subtotal = computeSubtotal(lineItems);
-
-  // ── RECALCULATE existing DRAFT ──────────────────────────────────────────────
-  if (action.type === 'recalculate') {
-    await prisma.$transaction(async tx => {
-      // Delete ALL line items so newly-assigned agents' SETUP_FEE + MONTHLY_FEE
-      // are picked up, not just USAGE_FEE updates.
-      await tx.invoiceLineItem.deleteMany({
-        where: { invoiceId: action.invoiceId },
-      });
-
-      if (lineItems.length > 0) {
-        await tx.invoiceLineItem.createMany({
-          data: lineItems.map(item => ({
-            invoiceId:   action.invoiceId,
-            type:        item.type,
-            agentId:     item.agentId,
-            agentName:   item.agentName,
-            description: item.description,
-            quantity:    item.quantity,
-            unitPrice:   item.unitPrice,
-            total:       item.total,
-          })),
-        });
-      }
-
-      const newSubtotal = Math.round(
-        lineItems.reduce((s, l) => s + l.total, 0) * 100
-      ) / 100;
-
-      await tx.invoice.update({
-        where: { id: action.invoiceId },
-        data:  { subtotal: newSubtotal, total: newSubtotal },
-      });
-    });
-
-    return prisma.invoice.findUnique({
-      where:   { id: action.invoiceId },
-      include: { lineItems: { orderBy: { type: 'asc' } } },
-    });
-  }
 
   // ── CREATE fresh invoice ────────────────────────────────────────────────────
   const takenNumbers = new Set(

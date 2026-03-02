@@ -12,6 +12,9 @@ export interface AgentInput {
   /** True when setup fee appears on a *different*, non-cancelled invoice for this user */
   setupFeeAlreadyBilled: boolean;
   monthlyFee:           number | null;
+  /** True when monthly fee appears on a *different*, non-cancelled invoice for the same period.
+   *  Used to prevent double-charging on supplement invoices (paid mid-month → new calls → Get Bill). */
+  monthlyFeeAlreadyBilled: boolean;
   /** Markup multiplier applied to Retell's actual call cost (e.g. 1.5 = charge 1.5× Retell cost) */
   costMultiplier:       number | null;
   assignedAt:           Date;
@@ -49,8 +52,8 @@ export function buildLineItems(agents: AgentInput[]): LineItem[] {
       });
     }
 
-    // MONTHLY_FEE
-    if (ag.monthlyFee) {
+    // MONTHLY_FEE — only if not already charged on another invoice for this period
+    if (ag.monthlyFee && !ag.monthlyFeeAlreadyBilled) {
       items.push({
         type:        'MONTHLY_FEE',
         agentId:     ag.retellAgentId,

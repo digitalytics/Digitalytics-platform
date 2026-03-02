@@ -1,19 +1,83 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LucideIcon } from 'lucide-react';
 
-interface NavItem {
+export interface NavItem {
   label: string;
-  href: string;
-  icon: LucideIcon;
+  href:  string;
+  icon:  LucideIcon;
+}
+
+export interface NavGroup {
+  label:    string;
+  icon:     LucideIcon;
+  children: NavItem[];
+}
+
+export type SidebarNavItem = NavItem | NavGroup;
+
+function isNavGroup(item: SidebarNavItem): item is NavGroup {
+  return 'children' in item;
 }
 
 interface SidebarProps {
-  items: NavItem[];
+  items:       SidebarNavItem[];
   userSection?: React.ReactNode;
+}
+
+function NavGroupItem({ group }: { group: NavGroup }) {
+  const pathname = usePathname();
+  const isAnyChildActive = group.children.some(c => pathname.startsWith(c.href));
+  const [open, setOpen] = useState(isAnyChildActive);
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className={cn(
+          'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+          isAnyChildActive
+            ? 'bg-white/15 text-white'
+            : 'text-green-100/80 hover:bg-white/10 hover:text-white'
+        )}
+      >
+        <group.icon size={18} className="flex-shrink-0" />
+        <span className="flex-1 text-left">{group.label}</span>
+        <ChevronDown
+          size={14}
+          className={cn('transition-transform duration-200 flex-shrink-0', open && 'rotate-180')}
+        />
+      </button>
+
+      {open && (
+        <div className="mt-0.5 ml-3 pl-4 border-l border-white/15 space-y-0.5">
+          {group.children.map(child => {
+            const isActive = pathname.startsWith(child.href);
+            return (
+              <Link
+                key={child.href}
+                href={child.href}
+                className={cn(
+                  'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-white/15 text-white'
+                    : 'text-green-100/70 hover:bg-white/10 hover:text-white'
+                )}
+              >
+                <child.icon size={16} />
+                {child.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Sidebar({ items, userSection }: SidebarProps) {
@@ -35,7 +99,11 @@ export function Sidebar({ items, userSection }: SidebarProps) {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {items.map(item => {
+        {items.map((item, i) => {
+          if (isNavGroup(item)) {
+            return <NavGroupItem key={i} group={item} />;
+          }
+
           const isActive =
             item.href === '/dashboard'
               ? pathname === '/dashboard'

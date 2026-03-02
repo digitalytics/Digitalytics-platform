@@ -6,16 +6,17 @@ const ASSIGNED_BEFORE_PERIOD = new Date('2025-01-01T00:00:00.000Z');
 
 function makeAgent(overrides: Partial<AgentInput> = {}): AgentInput {
   return {
-    retellAgentId:         'agent-001',
-    agentName:             'Test Agent',
-    setupFee:              null,
-    setupFeeAlreadyBilled: false,
-    monthlyFee:            null,
-    costMultiplier:        null,
-    assignedAt:            ASSIGNED_BEFORE_PERIOD,
-    periodStart:           PERIOD_START,
-    periodEnd:             PERIOD_END,
-    usageCost:             0,
+    retellAgentId:          'agent-001',
+    agentName:              'Test Agent',
+    setupFee:               null,
+    setupFeeAlreadyBilled:  false,
+    monthlyFee:             null,
+    monthlyFeeAlreadyBilled: false,
+    costMultiplier:         null,
+    assignedAt:             ASSIGNED_BEFORE_PERIOD,
+    periodStart:            PERIOD_START,
+    periodEnd:              PERIOD_END,
+    usageCost:              0,
     ...overrides,
   };
 }
@@ -65,14 +66,31 @@ describe('buildLineItems — SETUP_FEE', () => {
 // buildLineItems — MONTHLY_FEE
 // ---------------------------------------------------------------------------
 describe('buildLineItems — MONTHLY_FEE', () => {
-  it('includes MONTHLY_FEE', () => {
-    const items = buildLineItems([makeAgent({ monthlyFee: 200 })]);
+  it('includes MONTHLY_FEE when not already billed', () => {
+    const items = buildLineItems([makeAgent({ monthlyFee: 200, monthlyFeeAlreadyBilled: false })]);
     expect(items.find(i => i.type === 'MONTHLY_FEE')).toMatchObject({ total: 200 });
   });
 
   it('excludes MONTHLY_FEE when monthlyFee is null', () => {
     const items = buildLineItems([makeAgent({ monthlyFee: null })]);
     expect(items.find(i => i.type === 'MONTHLY_FEE')).toBeUndefined();
+  });
+
+  it('excludes MONTHLY_FEE when already billed on a PAID invoice for the same period (supplement invoice)', () => {
+    const items = buildLineItems([makeAgent({ monthlyFee: 200, monthlyFeeAlreadyBilled: true })]);
+    expect(items.find(i => i.type === 'MONTHLY_FEE')).toBeUndefined();
+  });
+
+  it('supplement invoice contains only USAGE_FEE when monthly fee was already paid', () => {
+    const items = buildLineItems([makeAgent({
+      monthlyFee:             200,
+      monthlyFeeAlreadyBilled: true,
+      costMultiplier:         1.5,
+      usageCost:              0.1,   // 0.1 × 1.5 = 0.15
+    })]);
+    expect(items.find(i => i.type === 'MONTHLY_FEE')).toBeUndefined();
+    expect(items.find(i => i.type === 'USAGE_FEE')).toBeDefined();
+    expect(items.find(i => i.type === 'USAGE_FEE')?.total).toBeCloseTo(0.15, 2);
   });
 });
 

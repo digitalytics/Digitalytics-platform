@@ -11,7 +11,6 @@ export default async function BillingPage() {
   const userId = session.user.id;
 
   // Automatically transition any unpaid invoices whose period has closed → OVERDUE
-  // (runs silently on every page load, no admin needed)
   await autoMarkOverdueForUser(userId);
 
   // Fetch agent assignments for the live cost breakdown
@@ -68,14 +67,14 @@ export default async function BillingPage() {
     usageCost:      usageMap[ua.agent.retellAgentId]?.cost       ?? 0,
   }));
 
-  // Fetch all non-cancelled invoices, newest first
-  const invoicesRaw = await prisma.invoice.findMany({
-    where:   { userId, status: { not: 'CANCELLED' } },
+  // Current-month invoices only (ordered newest first within period to prefer DRAFT)
+  const currentInvoicesRaw = await prisma.invoice.findMany({
+    where:   { userId, periodStart, status: { not: 'CANCELLED' } },
     include: { lineItems: { orderBy: { type: 'asc' } } },
-    orderBy: { periodStart: 'desc' },
+    orderBy: { createdAt: 'desc' },
   });
 
-  const invoices = invoicesRaw.map(inv => ({
+  const currentInvoices = currentInvoicesRaw.map(inv => ({
     id:            inv.id,
     invoiceNumber: inv.invoiceNumber,
     periodStart:   inv.periodStart.toISOString(),
@@ -85,7 +84,7 @@ export default async function BillingPage() {
     total:         Number(inv.total),
     paidAt:        inv.paidAt?.toISOString() ?? null,
     createdAt:     inv.createdAt.toISOString(),
-    lineItems: inv.lineItems.map(li => ({
+    lineItems:     inv.lineItems.map(li => ({
       id:          li.id,
       type:        li.type as string,
       agentId:     li.agentId,
@@ -98,27 +97,18 @@ export default async function BillingPage() {
   }));
 
   const totalMonthly     = agents.reduce((sum, a) => sum + (a.monthlyFee ?? 0), 0);
-  const outstandingSetup = agents
-    .filter(a => !a.setupFeePaid)
-    .reduce((sum, a) => sum + (a.setupFee ?? 0), 0);
-  const activeCount = agents.filter(a => a.isActive).length;
-
-  // Does a current-month invoice already exist?
-  // Use date-range check instead of string prefix to avoid UTC/local-time mismatch.
-  const hasCurrentInvoice = invoices.some(inv =>
-    new Date(inv.periodStart) <= now && now <= new Date(inv.periodEnd)
-  );
+  const outstandingSetup = agents.filter(a => !a.setupFeePaid).reduce((sum, a) => sum + (a.setupFee ?? 0), 0);
+  const activeCount      = agents.filter(a => a.isActive).length;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Billing</h1>
-        <p className="text-gray-500 mt-1">Your invoices and cost breakdown</p>
+        <h1 className="text-2xl font-bold text-gray-900">Current Bill</h1>
+        <p className="text-gray-500 mt-1">This month's invoice and live cost breakdown</p>
       </div>
       <BillingPageClient
         agents={agents}
-        invoices={invoices}
-        hasCurrentInvoice={hasCurrentInvoice}
+        currentInvoices={currentInvoices}
         totalMonthly={totalMonthly}
         outstandingSetup={outstandingSetup}
         activeCount={activeCount}

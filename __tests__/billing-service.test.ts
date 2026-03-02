@@ -98,8 +98,8 @@ describe('resolveGetBillButton', () => {
   it('returns disabled when invoice is PENDING', () => {
     expect(resolveGetBillButton('PENDING')).toEqual({ label: 'Get Bill', disabled: true });
   });
-  it('returns disabled when invoice is PAID', () => {
-    expect(resolveGetBillButton('PAID')).toEqual({ label: 'Get Bill', disabled: true });
+  it('returns enabled "Get Bill" when invoice is PAID (allow supplement invoice for remaining calls)', () => {
+    expect(resolveGetBillButton('PAID')).toEqual({ label: 'Get Bill', disabled: false });
   });
   it('returns disabled when invoice is OVERDUE', () => {
     expect(resolveGetBillButton('OVERDUE')).toEqual({ label: 'Get Bill', disabled: true });

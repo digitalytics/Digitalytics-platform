@@ -7,7 +7,7 @@ import {
   ChevronDown, ChevronUp, CreditCard, FileText, Loader2,
 } from 'lucide-react';
 import { formatMoney, formatDate } from '@/lib/utils';
-import { resolveGetBillButton, getOldestOverdueInvoice, resolveInvoicePayability } from '@/lib/billing-service';
+import { resolveGetBillButton, resolveInvoicePayability, getOldestOverdueInvoice } from '@/lib/billing-service';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
@@ -52,15 +52,14 @@ interface Invoice {
 }
 
 interface Props {
-  agents:             BillingAgent[];
-  invoices:           Invoice[];
-  hasCurrentInvoice:  boolean;
-  totalMonthly:       number;
-  outstandingSetup:   number;
-  activeCount:        number;
+  agents:           BillingAgent[];
+  currentInvoices:  Invoice[];   // all non-cancelled invoices for the current period
+  totalMonthly:     number;
+  outstandingSetup: number;
+  activeCount:      number;
 }
 
-// ── Domain constants ───────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const PAYABLE_STATUSES = new Set(['DRAFT', 'PENDING', 'OVERDUE']);
 
@@ -97,7 +96,6 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      {/* Header */}
       <div className="px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-9 h-9 rounded-lg bg-[#004D3E]/10 flex items-center justify-center flex-shrink-0">
@@ -126,7 +124,7 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
           </div>
 
           <div className="flex flex-col items-end gap-1">
-            {(canPay || PAYABLE_STATUSES.has(invoice.status)) && (
+            {PAYABLE_STATUSES.has(invoice.status) && (
               <Button
                 size="sm"
                 className="gap-1.5"
@@ -155,7 +153,6 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
         </div>
       </div>
 
-      {/* Line items */}
       {open && (
         <div className="border-t border-gray-100">
           <table className="w-full text-sm">
@@ -205,8 +202,7 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
 
 export function BillingPageClient({
   agents,
-  invoices,
-  hasCurrentInvoice,
+  currentInvoices,
   totalMonthly,
   outstandingSetup,
   activeCount,
@@ -219,23 +215,26 @@ export function BillingPageClient({
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
 
-  const paymentStatus = searchParams.get('payment'); // 'success' | 'cancelled' | null
+  const paymentStatus = searchParams.get('payment');
 
-  const totalOutstanding = invoices
+  // Prefer DRAFT invoice for the "active" view; fall back to first (PENDING/OVERDUE/PAID)
+  const activeInvoice =
+    currentInvoices.find(inv => inv.status === 'DRAFT') ??
+    currentInvoices.find(inv => inv.status === 'PENDING' || inv.status === 'OVERDUE') ??
+    currentInvoices[0] ??
+    null;
+
+  // Previously-paid invoices for the same month (shown below active invoice)
+  const paidThisMonth = currentInvoices.filter(inv => inv !== activeInvoice && inv.status === 'PAID');
+
+  const overdueBlocker = getOldestOverdueInvoice(currentInvoices);
+
+  const totalOutstanding = currentInvoices
     .filter(inv => PAYABLE_STATUSES.has(inv.status))
     .reduce((s, inv) => s + inv.total, 0);
 
-  // Use date-range check to avoid UTC/local-time mismatch on string prefix.
-  const now = new Date();
-  const currentInvoice = invoices.find(inv =>
-    new Date(inv.periodStart) <= now && now <= new Date(inv.periodEnd)
-  ) ?? null;
-  const pastInvoices = invoices.filter(inv => inv !== currentInvoice);
-
-  const overdueBlocker = getOldestOverdueInvoice(invoices);
-
   const btnState = resolveGetBillButton(
-    (currentInvoice?.status ?? null) as Parameters<typeof resolveGetBillButton>[0]
+    (activeInvoice?.status ?? null) as Parameters<typeof resolveGetBillButton>[0]
   );
 
   const handleGetBill = async () => {
@@ -285,7 +284,6 @@ export function BillingPageClient({
 
       {/* ── Summary cards ───────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-
         <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4">
           <div className="w-10 h-10 rounded-lg bg-[#004D3E]/10 flex items-center justify-center flex-shrink-0">
             <Receipt className="w-5 h-5 text-[#004D3E]" />
@@ -304,11 +302,11 @@ export function BillingPageClient({
             <CreditCard className={`w-5 h-5 ${totalOutstanding > 0 ? 'text-red-500' : 'text-green-500'}`} />
           </div>
           <div>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Outstanding Balance</p>
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Outstanding</p>
             <p className={`text-xl font-bold mt-0.5 ${totalOutstanding > 0 ? 'text-red-600' : 'text-gray-900'}`}>
               {formatMoney(totalOutstanding)}
             </p>
-            <p className="text-xs text-gray-400">across all invoices</p>
+            <p className="text-xs text-gray-400">this month</p>
           </div>
         </div>
 
@@ -322,7 +320,6 @@ export function BillingPageClient({
             <p className="text-xs text-gray-400">of {agents.length} assigned</p>
           </div>
         </div>
-
       </div>
 
       {/* ── Payment result banners ───────────────────────────────────────── */}
@@ -363,14 +360,14 @@ export function BillingPageClient({
           <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{generateError}</p>
         )}
 
-        {currentInvoice ? (() => {
-          const { canPay, blockMessage } = resolveInvoicePayability(currentInvoice, overdueBlocker);
+        {activeInvoice ? (() => {
+          const { canPay, blockMessage } = resolveInvoicePayability(activeInvoice, overdueBlocker);
           return (
             <InvoiceCard
-              invoice={currentInvoice}
+              invoice={activeInvoice}
               canPay={canPay}
-              onPay={() => handlePay(currentInvoice.id)}
-              isPaying={payingInvoiceId === currentInvoice.id}
+              onPay={() => handlePay(activeInvoice.id)}
+              isPaying={payingInvoiceId === activeInvoice.id}
               blockMessage={blockMessage}
             />
           );
@@ -379,6 +376,18 @@ export function BillingPageClient({
             <p className="text-sm text-gray-400">No invoice generated yet. Click "Get Bill" above.</p>
           </div>
         )}
+
+        {/* Additional paid invoices for this month (after supplement billing) */}
+        {paidThisMonth.map(inv => (
+          <InvoiceCard
+            key={inv.id}
+            invoice={inv}
+            canPay={false}
+            onPay={() => {}}
+            isPaying={false}
+            blockMessage={null}
+          />
+        ))}
       </div>
 
       {/* ── Agent cost breakdown (live estimate) ────────────────────────── */}
@@ -390,7 +399,6 @@ export function BillingPageClient({
 
         {agents.map(agent => (
           <div key={agent.retellAgentId} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            {/* Agent header */}
             <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100">
               <div>
                 <div className="flex items-center gap-2">
@@ -409,7 +417,6 @@ export function BillingPageClient({
               </div>
             </div>
 
-            {/* Cost rows */}
             <div className="divide-y divide-gray-50">
               {agent.setupFee != null && (
                 <div className="px-5 py-3.5 flex items-center justify-between">
@@ -449,9 +456,7 @@ export function BillingPageClient({
                 <div>
                   <p className="text-sm font-medium text-gray-700">Usage This Month</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {agent.costMultiplier != null
-                      ? 'Usage charged this period'
-                      : 'No multiplier configured'}
+                    {agent.costMultiplier != null ? 'Usage charged this period' : 'No multiplier configured'}
                   </p>
                 </div>
                 <div className="text-right">
@@ -465,7 +470,6 @@ export function BillingPageClient({
               </div>
             </div>
 
-            {/* Agent subtotal */}
             <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
               <span className="text-sm font-semibold text-gray-700">Agent Total (est.)</span>
               <span className="text-sm font-bold text-gray-900">
@@ -484,11 +488,13 @@ export function BillingPageClient({
           <div>
             <p className="font-semibold">Estimated Total This Month</p>
             <p className="text-xs text-white/60 mt-0.5">
-              {!currentInvoice
+              {!activeInvoice
                 ? 'Click "Get Bill" above to generate your invoice'
-                : currentInvoice.status === 'DRAFT'
+                : activeInvoice.status === 'DRAFT'
                   ? 'Click "Update Bill" above to include any new usage'
-                  : 'See your invoice above for the exact amount'}
+                  : activeInvoice.status === 'PAID'
+                    ? 'Invoice paid — click "Get Bill" to bill any remaining calls'
+                    : 'See your invoice above for the exact amount'}
             </p>
           </div>
           <p className="text-2xl font-bold">
@@ -500,35 +506,6 @@ export function BillingPageClient({
           </p>
         </div>
       </div>
-
-      {/* ── Invoice history ──────────────────────────────────────────────── */}
-      {pastInvoices.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-base font-semibold text-gray-900">Invoice History</h2>
-
-          {overdueBlocker && (
-            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-800">
-              <p className="text-sm font-medium">
-                You have an overdue invoice. Please pay it before paying other invoices.
-              </p>
-            </div>
-          )}
-
-          {pastInvoices.map(inv => {
-            const { canPay, blockMessage } = resolveInvoicePayability(inv, overdueBlocker);
-            return (
-              <InvoiceCard
-                key={inv.id}
-                invoice={inv}
-                canPay={canPay}
-                onPay={() => handlePay(inv.id)}
-                isPaying={payingInvoiceId === inv.id}
-                blockMessage={blockMessage}
-              />
-            );
-          })}
-        </div>
-      )}
 
     </div>
   );

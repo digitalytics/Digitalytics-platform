@@ -6,10 +6,11 @@
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-const mockConstructEvent    = jest.fn();
+const mockConstructEvent           = jest.fn();
 const mockPrismaInvoiceUpdateMany  = jest.fn();
 const mockPrismaInvoiceFindFirst   = jest.fn();
 const mockPrismaUserUpdate         = jest.fn();
+const mockPrismaUserAgentUpdateMany = jest.fn();
 
 jest.mock('@/lib/stripe', () => ({
   stripe: {
@@ -27,6 +28,9 @@ jest.mock('@/lib/prisma', () => ({
     },
     user: {
       update: (...args: unknown[]) => mockPrismaUserUpdate(...args),
+    },
+    userAgent: {
+      updateMany: (...args: unknown[]) => mockPrismaUserAgentUpdateMany(...args),
     },
   },
 }));
@@ -81,7 +85,7 @@ describe('POST /api/webhooks/stripe', () => {
       type: 'checkout.session.completed',
       data: { object: sessionPayload },
     });
-    mockPrismaInvoiceFindFirst.mockResolvedValue({ id: 'inv_1', userId: 'user_1' });
+    mockPrismaInvoiceFindFirst.mockResolvedValue({ id: 'inv_1', userId: 'user_1', lineItems: [] });
     mockPrismaInvoiceUpdateMany.mockResolvedValue({ count: 1 });
     mockPrismaUserUpdate.mockResolvedValue({});
 
@@ -112,7 +116,7 @@ describe('POST /api/webhooks/stripe', () => {
       type: 'checkout.session.completed',
       data: { object: sessionPayload },
     });
-    mockPrismaInvoiceFindFirst.mockResolvedValue({ id: 'inv_1', userId: 'user_1' });
+    mockPrismaInvoiceFindFirst.mockResolvedValue({ id: 'inv_1', userId: 'user_1', lineItems: [] });
     mockPrismaInvoiceUpdateMany.mockResolvedValue({ count: 1 });
     mockPrismaUserUpdate.mockResolvedValue({});
 
@@ -168,7 +172,7 @@ describe('POST /api/webhooks/stripe', () => {
       type: 'checkout.session.completed',
       data: { object: sessionPayload },
     });
-    mockPrismaInvoiceFindFirst.mockResolvedValue(null); // invoice not found
+    mockPrismaInvoiceFindFirst.mockResolvedValue(null); // no invoice found
 
     const res = await POST(makeRequest(JSON.stringify(sessionPayload), 'valid_sig'));
     // Should not crash — return 200
