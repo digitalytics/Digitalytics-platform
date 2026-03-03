@@ -4,6 +4,6 @@ const globalForStripe = globalThis as unknown as { stripe?: Stripe };
 
 export const stripe =
   globalForStripe.stripe ??
-  new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-11-20.acacia' as const });
+  new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' as const });
 
 if (process.env.NODE_ENV !== 'production') globalForStripe.stripe = stripe;
