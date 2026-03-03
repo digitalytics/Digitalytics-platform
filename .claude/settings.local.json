@@ -18,7 +18,13 @@
       "Bash(cd \"E:/15. Digitalytics/digiweb-agents\" && npx jest --config jest.config.cjs 2>&1)",
       "Bash(tail:*)",
       "Bash(head:*)",
-      "Bash(cd \"E:/15. Digitalytics/digiweb-agents\" && npx tsc --noEmit 2>&1)"
+      "Bash(cd \"E:/15. Digitalytics/digiweb-agents\" && npx tsc --noEmit 2>&1)",
+      "mcp__puppeteer__puppeteer_screenshot",
+      "mcp__puppeteer__puppeteer_fill",
+      "mcp__puppeteer__puppeteer_click",
+      "mcp__puppeteer__puppeteer_navigate",
+      "mcp__puppeteer__puppeteer_evaluate",
+      "Bash(cd \"E:\\\\15. Digitalytics\\\\digiweb-agents\" && npx jest --testPathPattern=\"billing|stripe\" --no-coverage 2>&1)"
     ]
   },
   "enableAllProjectMcpServers": true,

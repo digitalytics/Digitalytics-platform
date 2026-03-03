@@ -1,31 +1,17 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Receipt, Calendar, Bot, CheckCircle, Clock,
   ChevronDown, ChevronUp, CreditCard, FileText, Loader2,
 } from 'lucide-react';
 import { formatMoney, formatDate } from '@/lib/utils';
-import { resolveGetBillButton, resolveInvoicePayability, getOldestOverdueInvoice } from '@/lib/billing-service';
+import { resolveInvoicePayability, getOldestOverdueInvoice } from '@/lib/billing-service';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-
-interface BillingAgent {
-  retellAgentId:  string;
-  name:           string;
-  isActive:       boolean;
-  phoneNumber:    string | null;
-  assignedAt:     string;
-  setupFee:       number | null;
-  setupFeePaid:   boolean;
-  monthlyFee:     number | null;
-  costMultiplier: number | null;
-  retellCost:     number;
-  usageCost:      number;
-}
 
 interface LineItem {
   id:          string;
@@ -51,9 +37,28 @@ interface Invoice {
   lineItems:     LineItem[];
 }
 
+interface AgentBillingSection {
+  userAgentId:    string;
+  retellAgentId:  string;
+  name:           string;
+  isActive:       boolean;
+  phoneNumber:    string | null;
+  assignedAt:     string;
+  setupFee:       number | null;
+  setupFeePaid:   boolean;
+  monthlyFee:     number | null;
+  costMultiplier: number | null;
+  retellCost:     number;
+  usageCost:      number;
+  periodStart:    string;
+  periodEnd:      string;
+  setupInvoice:   Invoice | null;
+  monthlyInvoice: Invoice | null;
+}
+
 interface Props {
-  agents:           BillingAgent[];
-  currentInvoices:  Invoice[];   // all non-cancelled invoices for the current period
+  sections:         AgentBillingSection[];
+  allInvoices:      Invoice[];
   totalMonthly:     number;
   outstandingSetup: number;
   activeCount:      number;
@@ -76,9 +81,11 @@ const LINE_ITEM_LABEL: Record<string, string> = {
   USAGE_FEE:   'Usage Fee',
 };
 
-function formatPeriod(start: string) {
-  const d = new Date(start);
-  return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+function formatPeriodRange(start: string, end: string) {
+  const s = new Date(start);
+  const e = new Date(end);
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' };
+  return `${s.toLocaleDateString('en-US', opts)} – ${e.toLocaleDateString('en-US', opts)}`;
 }
 
 // ── Invoice Card ───────────────────────────────────────────────────────────────
@@ -111,7 +118,7 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
               </Badge>
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
-              {formatPeriod(invoice.periodStart)}
+              {formatPeriodRange(invoice.periodStart, invoice.periodEnd)}
               {invoice.paidAt && ` · Paid ${formatDate(invoice.paidAt)}`}
             </p>
           </div>
@@ -155,6 +162,7 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
 
       {open && (
         <div className="border-t border-gray-100">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
@@ -192,8 +200,116 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
               </tr>
             </tfoot>
           </table>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Agent Section ──────────────────────────────────────────────────────────────
+
+interface AgentSectionProps {
+  section:         AgentBillingSection;
+  overdueBlocker:  { id: string } | null;
+  onPay:           (invoiceId: string) => void;
+  payingInvoiceId: string | null;
+}
+
+function AgentSection({ section, overdueBlocker, onPay, payingInvoiceId }: AgentSectionProps) {
+  const invoicesToRender: Array<{ label: string; invoice: Invoice }> = [];
+  if (section.setupInvoice)   invoicesToRender.push({ label: 'Setup Fee Invoice',  invoice: section.setupInvoice });
+  if (section.monthlyInvoice) invoicesToRender.push({ label: 'Monthly Invoice',    invoice: section.monthlyInvoice });
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {/* Agent header */}
+      <div className="px-5 py-4 flex items-center justify-between flex-wrap gap-3 border-b border-gray-100 bg-gray-50/50">
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-gray-900">{section.name}</p>
+            <Badge variant={section.isActive ? 'success' : 'neutral'}>
+              {section.isActive ? 'Active' : 'Inactive'}
+            </Badge>
+          </div>
+          {section.phoneNumber && (
+            <p className="text-xs text-gray-400 mt-0.5">{section.phoneNumber}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+          <span className="flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5" />
+            Since {formatDate(section.assignedAt)}
+          </span>
+          <span className="text-gray-300">·</span>
+          <span>{formatPeriodRange(section.periodStart, section.periodEnd)}</span>
+        </div>
+      </div>
+
+      {/* Invoices + live estimate */}
+      <div className="p-4 space-y-3">
+        {invoicesToRender.length > 0 ? (
+          invoicesToRender.map(({ label, invoice }) => {
+            const { canPay: basePay, blockMessage: baseMsg } = resolveInvoicePayability(invoice, overdueBlocker);
+
+            // Pay Now is only available once the billing period has fully elapsed
+            const periodComplete = new Date(invoice.periodEnd) <= new Date();
+            const canPay = basePay && periodComplete;
+            const blockMessage = !periodComplete
+              ? `Available after period ends (${new Date(invoice.periodEnd).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })})`
+              : baseMsg;
+
+            return (
+              <div key={invoice.id}>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">{label}</p>
+                <InvoiceCard
+                  invoice={invoice}
+                  canPay={canPay}
+                  onPay={() => onPay(invoice.id)}
+                  isPaying={payingInvoiceId === invoice.id}
+                  blockMessage={blockMessage}
+                />
+              </div>
+            );
+          })
+        ) : (
+          <p className="text-sm text-gray-400 text-center py-3">
+            Invoice will appear automatically
+          </p>
+        )}
+
+        {/* Live estimate row */}
+        <div className="bg-gray-50 rounded-lg px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Live Estimate</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {section.costMultiplier != null ? 'Usage charged this period' : 'No usage multiplier'}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm font-bold text-gray-900">
+              {formatMoney(
+                (section.setupFeePaid ? 0 : (section.setupFee ?? 0)) +
+                (section.monthlyFee ?? 0) +
+                (section.costMultiplier != null ? section.usageCost : 0)
+              )}
+            </p>
+            {section.setupFee != null && (
+              <p className="text-xs mt-0.5">
+                {section.setupFeePaid ? (
+                  <span className="text-green-600 flex items-center justify-end gap-1">
+                    <CheckCircle className="w-3 h-3" /> Setup paid
+                  </span>
+                ) : (
+                  <span className="text-amber-600 flex items-center justify-end gap-1">
+                    <Clock className="w-3 h-3" /> Setup unpaid
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -201,59 +317,22 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export function BillingPageClient({
-  agents,
-  currentInvoices,
+  sections,
+  allInvoices,
   totalMonthly,
   outstandingSetup,
   activeCount,
 }: Props) {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState<string | null>(null);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
 
-  const paymentStatus = searchParams.get('payment');
+  const paymentStatus  = searchParams.get('payment');
+  const overdueBlocker = getOldestOverdueInvoice(allInvoices);
 
-  // Prefer DRAFT invoice for the "active" view; fall back to first (PENDING/OVERDUE/PAID)
-  const activeInvoice =
-    currentInvoices.find(inv => inv.status === 'DRAFT') ??
-    currentInvoices.find(inv => inv.status === 'PENDING' || inv.status === 'OVERDUE') ??
-    currentInvoices[0] ??
-    null;
-
-  // Previously-paid invoices for the same month (shown below active invoice)
-  const paidThisMonth = currentInvoices.filter(inv => inv !== activeInvoice && inv.status === 'PAID');
-
-  const overdueBlocker = getOldestOverdueInvoice(currentInvoices);
-
-  const totalOutstanding = currentInvoices
+  const totalOutstanding = allInvoices
     .filter(inv => PAYABLE_STATUSES.has(inv.status))
     .reduce((s, inv) => s + inv.total, 0);
-
-  const btnState = resolveGetBillButton(
-    (activeInvoice?.status ?? null) as Parameters<typeof resolveGetBillButton>[0]
-  );
-
-  const handleGetBill = async () => {
-    setIsGenerating(true);
-    setGenerateError(null);
-    try {
-      const res = await fetch('/api/billing/invoice/generate', { method: 'POST' });
-      if (!res.ok) {
-        const data = await res.json();
-        setGenerateError(data.error ?? 'Failed to generate invoice.');
-        return;
-      }
-      startTransition(() => router.refresh());
-    } catch {
-      setGenerateError('Network error. Please try again.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
   const handlePay = async (invoiceId: string) => {
     setPayingInvoiceId(invoiceId);
@@ -270,7 +349,7 @@ export function BillingPageClient({
     }
   };
 
-  if (agents.length === 0) {
+  if (sections.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
         <Receipt className="w-10 h-10 text-gray-300 mx-auto mb-3" />
@@ -278,6 +357,10 @@ export function BillingPageClient({
       </div>
     );
   }
+
+  const totalUsage = sections.reduce(
+    (s, sec) => s + (sec.costMultiplier != null ? sec.usageCost : 0), 0
+  );
 
   return (
     <div className="space-y-8">
@@ -306,7 +389,7 @@ export function BillingPageClient({
             <p className={`text-xl font-bold mt-0.5 ${totalOutstanding > 0 ? 'text-red-600' : 'text-gray-900'}`}>
               {formatMoney(totalOutstanding)}
             </p>
-            <p className="text-xs text-gray-400">this month</p>
+            <p className="text-xs text-gray-400">across all invoices</p>
           </div>
         </div>
 
@@ -317,7 +400,7 @@ export function BillingPageClient({
           <div>
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Active Agents</p>
             <p className="text-xl font-bold text-gray-900 mt-0.5">{activeCount}</p>
-            <p className="text-xs text-gray-400">of {agents.length} assigned</p>
+            <p className="text-xs text-gray-400">of {sections.length} assigned</p>
           </div>
         </div>
       </div>
@@ -339,172 +422,35 @@ export function BillingPageClient({
         <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{payError}</p>
       )}
 
-      {/* ── This month's invoice ─────────────────────────────────────────── */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-900">This Month's Invoice</h2>
-          <Button
-            size="sm"
-            onClick={handleGetBill}
-            disabled={btnState.disabled || isGenerating || isPending}
-          >
-            {isGenerating || isPending ? (
-              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating…</>
-            ) : (
-              <><Receipt className="w-3.5 h-3.5" /> {btnState.label}</>
-            )}
-          </Button>
+      {/* ── Per-agent billing sections ───────────────────────────────────── */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Agent Billing</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Each agent has its own anniversary billing period</p>
         </div>
 
-        {generateError && (
-          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{generateError}</p>
-        )}
-
-        {activeInvoice ? (() => {
-          const { canPay, blockMessage } = resolveInvoicePayability(activeInvoice, overdueBlocker);
-          return (
-            <InvoiceCard
-              invoice={activeInvoice}
-              canPay={canPay}
-              onPay={() => handlePay(activeInvoice.id)}
-              isPaying={payingInvoiceId === activeInvoice.id}
-              blockMessage={blockMessage}
-            />
-          );
-        })() : (
-          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center">
-            <p className="text-sm text-gray-400">No invoice generated yet. Click "Get Bill" above.</p>
-          </div>
-        )}
-
-        {/* Additional paid invoices for this month (after supplement billing) */}
-        {paidThisMonth.map(inv => (
-          <InvoiceCard
-            key={inv.id}
-            invoice={inv}
-            canPay={false}
-            onPay={() => {}}
-            isPaying={false}
-            blockMessage={null}
+        {sections.map(section => (
+          <AgentSection
+            key={section.retellAgentId}
+            section={section}
+            overdueBlocker={overdueBlocker}
+            onPay={handlePay}
+            payingInvoiceId={payingInvoiceId}
           />
         ))}
       </div>
 
-      {/* ── Agent cost breakdown (live estimate) ────────────────────────── */}
-      <div className="space-y-3">
+      {/* ── Estimated grand total ─────────────────────────────────────────── */}
+      <div className="bg-[#004D3E] rounded-xl px-5 py-4 flex items-center justify-between text-white">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Agent Cost Breakdown</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Live estimate for the current billing period</p>
-        </div>
-
-        {agents.map(agent => (
-          <div key={agent.retellAgentId} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100">
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold text-gray-900">{agent.name}</p>
-                  <Badge variant={agent.isActive ? 'success' : 'neutral'}>
-                    {agent.isActive ? 'Active' : 'Inactive'}
-                  </Badge>
-                </div>
-                {agent.phoneNumber && (
-                  <p className="text-xs text-gray-400 mt-0.5">{agent.phoneNumber}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Since {formatDate(agent.assignedAt)}</span>
-              </div>
-            </div>
-
-            <div className="divide-y divide-gray-50">
-              {agent.setupFee != null && (
-                <div className="px-5 py-3.5 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Setup Fee</p>
-                    <p className="text-xs text-gray-400 mt-0.5">One-time charge</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-gray-900">{formatMoney(agent.setupFee)}</span>
-                    {agent.setupFeePaid ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-                        <CheckCircle className="w-3 h-3" /> Paid
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
-                        <Clock className="w-3 h-3" /> Unpaid
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {agent.monthlyFee != null && (
-                <div className="px-5 py-3.5 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Monthly Service Fee</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Recurring monthly charge</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm font-semibold text-gray-900">{formatMoney(agent.monthlyFee)}</span>
-                    <p className="text-xs text-gray-400 mt-0.5">/ month</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="px-5 py-3.5 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Usage This Month</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {agent.costMultiplier != null ? 'Usage charged this period' : 'No multiplier configured'}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm font-semibold text-gray-900">
-                    {agent.costMultiplier != null ? formatMoney(agent.usageCost) : '—'}
-                  </span>
-                  {agent.costMultiplier != null && (
-                    <p className="text-xs text-gray-400 mt-0.5">this month</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-sm font-semibold text-gray-700">Agent Total (est.)</span>
-              <span className="text-sm font-bold text-gray-900">
-                {formatMoney(
-                  (agent.setupFeePaid ? 0 : (agent.setupFee ?? 0)) +
-                  (agent.monthlyFee ?? 0) +
-                  (agent.costMultiplier != null ? agent.usageCost : 0)
-                )}
-              </span>
-            </div>
-          </div>
-        ))}
-
-        {/* Estimated grand total */}
-        <div className="bg-[#004D3E] rounded-xl px-5 py-4 flex items-center justify-between text-white">
-          <div>
-            <p className="font-semibold">Estimated Total This Month</p>
-            <p className="text-xs text-white/60 mt-0.5">
-              {!activeInvoice
-                ? 'Click "Get Bill" above to generate your invoice'
-                : activeInvoice.status === 'DRAFT'
-                  ? 'Click "Update Bill" above to include any new usage'
-                  : activeInvoice.status === 'PAID'
-                    ? 'Invoice paid — click "Get Bill" to bill any remaining calls'
-                    : 'See your invoice above for the exact amount'}
-            </p>
-          </div>
-          <p className="text-2xl font-bold">
-            {formatMoney(
-              outstandingSetup +
-              totalMonthly +
-              agents.reduce((s, a) => s + (a.costMultiplier != null ? a.usageCost : 0), 0)
-            )}
+          <p className="font-semibold">Estimated Total (Current Periods)</p>
+          <p className="text-xs text-white/60 mt-0.5">
+            Setup fees + monthly fees + live usage across all agents
           </p>
         </div>
+        <p className="text-2xl font-bold">
+          {formatMoney(outstandingSetup + totalMonthly + totalUsage)}
+        </p>
       </div>
 
     </div>

@@ -112,12 +112,14 @@ function buildLineItems(agents) {
     }
     return items;
 }
-function isInvoiceOverdue(status, periodEnd, now) {
+function isInvoiceOverdue(status, periodStart, now) {
     if (![
         'DRAFT',
         'PENDING'
     ].includes(status)) return false;
-    return now > periodEnd;
+    const dueDate = new Date(periodStart);
+    dueDate.setDate(dueDate.getDate() + 8); // due on day 8 (e.g. Jan 9 for Jan 1 start)
+    return now >= dueDate;
 }
 function computeSubtotal(items) {
     return Math.round(items.reduce((s, l)=>s + l.total, 0) * 100) / 100;
@@ -137,6 +139,8 @@ __turbopack_context__.s([
     ()=>autoMarkOverdueForUser,
     "buildInvoiceNumber",
     ()=>buildInvoiceNumber,
+    "ensureBillingUpToDate",
+    ()=>ensureBillingUpToDate,
     "ensureCurrentInvoice",
     ()=>ensureCurrentInvoice,
     "getOldestOverdueInvoice",
@@ -251,10 +255,10 @@ async function autoMarkOverdueForUser(userId) {
         select: {
             id: true,
             status: true,
-            periodEnd: true
+            periodStart: true
         }
     });
-    const overdueIds = candidates.filter((inv)=>(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["isInvoiceOverdue"])(inv.status, inv.periodEnd, now)).map((inv)=>inv.id);
+    const overdueIds = candidates.filter((inv)=>(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["isInvoiceOverdue"])(inv.status, inv.periodStart, now)).map((inv)=>inv.id);
     if (overdueIds.length === 0) return;
     await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].invoice.updateMany({
         where: {
@@ -562,6 +566,10 @@ async function ensureCurrentInvoice(userId) {
             }
         }
     });
+}
+async function ensureBillingUpToDate(userId) {
+    await ensureCurrentInvoice(userId);
+    await autoMarkOverdueForUser(userId);
 }
 }),
 "[project]/app/(dashboard)/billing/history/page.tsx [app-rsc] (ecmascript)", ((__turbopack_context__) => {

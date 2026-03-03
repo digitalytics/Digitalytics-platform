@@ -153,6 +153,7 @@ export function UsersPageClient({
         {filtered.length === 0 ? (
           <div className="p-12 text-center text-gray-400">No users found.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -251,6 +252,7 @@ export function UsersPageClient({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

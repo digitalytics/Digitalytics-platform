@@ -112,12 +112,14 @@ function buildLineItems(agents) {
     }
     return items;
 }
-function isInvoiceOverdue(status, periodEnd, now) {
+function isInvoiceOverdue(status, periodStart, now) {
     if (![
         'DRAFT',
         'PENDING'
     ].includes(status)) return false;
-    return now > periodEnd;
+    const dueDate = new Date(periodStart);
+    dueDate.setDate(dueDate.getDate() + 8); // due on day 8 (e.g. Jan 9 for Jan 1 start)
+    return now >= dueDate;
 }
 function computeSubtotal(items) {
     return Math.round(items.reduce((s, l)=>s + l.total, 0) * 100) / 100;
@@ -137,6 +139,8 @@ __turbopack_context__.s([
     ()=>autoMarkOverdueForUser,
     "buildInvoiceNumber",
     ()=>buildInvoiceNumber,
+    "ensureBillingUpToDate",
+    ()=>ensureBillingUpToDate,
     "ensureCurrentInvoice",
     ()=>ensureCurrentInvoice,
     "getOldestOverdueInvoice",
@@ -251,10 +255,10 @@ async function autoMarkOverdueForUser(userId) {
         select: {
             id: true,
             status: true,
-            periodEnd: true
+            periodStart: true
         }
     });
-    const overdueIds = candidates.filter((inv)=>(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["isInvoiceOverdue"])(inv.status, inv.periodEnd, now)).map((inv)=>inv.id);
+    const overdueIds = candidates.filter((inv)=>(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["isInvoiceOverdue"])(inv.status, inv.periodStart, now)).map((inv)=>inv.id);
     if (overdueIds.length === 0) return;
     await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].invoice.updateMany({
         where: {
@@ -563,6 +567,10 @@ async function ensureCurrentInvoice(userId) {
         }
     });
 }
+async function ensureBillingUpToDate(userId) {
+    await ensureCurrentInvoice(userId);
+    await autoMarkOverdueForUser(userId);
+}
 }),
 "[project]/app/(dashboard)/billing/page.tsx [app-rsc] (ecmascript)", ((__turbopack_context__) => {
 "use strict";
@@ -590,12 +598,27 @@ var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
 ;
 ;
 ;
-async function BillingPage() {
+async function BillingPage({ searchParams }) {
     const session = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$auth$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["auth"])();
     if (!session) (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$components$2f$navigation$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["redirect"])('/login');
     const userId = session.user.id;
-    // Automatically transition any unpaid invoices whose period has closed → OVERDUE
-    await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$service$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["autoMarkOverdueForUser"])(userId);
+    const { payment } = await searchParams;
+    // If user backed out of Stripe Checkout, immediately reset PENDING → DRAFT.
+    // (Stripe fires checkout.session.expired only after ~30 min — too long to wait.)
+    if (payment === 'cancelled') {
+        await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].invoice.updateMany({
+            where: {
+                userId,
+                status: 'PENDING'
+            },
+            data: {
+                status: 'DRAFT',
+                stripeCheckoutSessionId: null
+            }
+        });
+    }
+    // Auto-generate current-month invoice if missing, then mark overdue if past 8-day grace period
+    await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$service$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["ensureBillingUpToDate"])(userId);
     // Fetch agent assignments for the live cost breakdown
     const userAgents = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].userAgent.findMany({
         where: {
@@ -720,7 +743,7 @@ async function BillingPage() {
                         children: "Current Bill"
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/billing/page.tsx",
-                        lineNumber: 106,
+                        lineNumber: 121,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -728,13 +751,13 @@ async function BillingPage() {
                         children: "This month's invoice and live cost breakdown"
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/billing/page.tsx",
-                        lineNumber: 107,
+                        lineNumber: 122,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/(dashboard)/billing/page.tsx",
-                lineNumber: 105,
+                lineNumber: 120,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$dashboard$2f$billing$2d$page$2d$client$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["BillingPageClient"], {
@@ -745,13 +768,13 @@ async function BillingPage() {
                 activeCount: activeCount
             }, void 0, false, {
                 fileName: "[project]/app/(dashboard)/billing/page.tsx",
-                lineNumber: 109,
+                lineNumber: 124,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/(dashboard)/billing/page.tsx",
-        lineNumber: 104,
+        lineNumber: 119,
         columnNumber: 5
     }, this);
 }

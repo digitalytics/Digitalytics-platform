@@ -6,10 +6,11 @@
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-const mockConstructEvent           = jest.fn();
-const mockPrismaInvoiceUpdateMany  = jest.fn();
-const mockPrismaInvoiceFindFirst   = jest.fn();
-const mockPrismaUserUpdate         = jest.fn();
+const mockConstructEvent            = jest.fn();
+const mockPrismaInvoiceUpdateMany   = jest.fn();
+const mockPrismaInvoiceFindFirst    = jest.fn();
+const mockPrismaUserUpdate          = jest.fn();
+const mockPrismaUserAgentUpdate     = jest.fn();
 const mockPrismaUserAgentUpdateMany = jest.fn();
 
 jest.mock('@/lib/stripe', () => ({
@@ -30,6 +31,7 @@ jest.mock('@/lib/prisma', () => ({
       update: (...args: unknown[]) => mockPrismaUserUpdate(...args),
     },
     userAgent: {
+      update:     (...args: unknown[]) => mockPrismaUserAgentUpdate(...args),
       updateMany: (...args: unknown[]) => mockPrismaUserAgentUpdateMany(...args),
     },
   },
@@ -159,6 +161,70 @@ describe('POST /api/webhooks/stripe', () => {
     const res = await POST(makeRequest('{}', 'valid_sig'));
     expect(res.status).toBe(200);
     expect(mockPrismaInvoiceUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('calls userAgent.update directly for SETUP invoice (new per-agent path)', async () => {
+    const sessionPayload = {
+      id: 'cs_setup',
+      payment_intent: 'pi_setup',
+      customer: 'cus_abc',
+      metadata: { invoiceId: 'inv_setup' },
+    };
+    mockConstructEvent.mockReturnValue({
+      type: 'checkout.session.completed',
+      data: { object: sessionPayload },
+    });
+    mockPrismaInvoiceFindFirst.mockResolvedValue({
+      id: 'inv_setup', userId: 'user_1',
+      invoiceType: 'SETUP', userAgentId: 'ua_1',
+      lineItems: [],
+    });
+    mockPrismaInvoiceUpdateMany.mockResolvedValue({ count: 1 });
+    mockPrismaUserAgentUpdate.mockResolvedValue({});
+    mockPrismaUserUpdate.mockResolvedValue({});
+
+    const res = await POST(makeRequest(JSON.stringify(sessionPayload), 'valid_sig'));
+    expect(res.status).toBe(200);
+
+    expect(mockPrismaUserAgentUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'ua_1' },
+        data:  { setupFeePaid: true },
+      })
+    );
+    expect(mockPrismaUserAgentUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('uses legacy userAgent.updateMany for old combined invoices with SETUP_FEE line items', async () => {
+    const sessionPayload = {
+      id: 'cs_legacy',
+      payment_intent: 'pi_legacy',
+      customer: 'cus_abc',
+      metadata: { invoiceId: 'inv_legacy' },
+    };
+    mockConstructEvent.mockReturnValue({
+      type: 'checkout.session.completed',
+      data: { object: sessionPayload },
+    });
+    mockPrismaInvoiceFindFirst.mockResolvedValue({
+      id: 'inv_legacy', userId: 'user_1',
+      invoiceType: 'MONTHLY', userAgentId: null,
+      lineItems: [{ agentId: 'agent_db_1' }],
+    });
+    mockPrismaInvoiceUpdateMany.mockResolvedValue({ count: 1 });
+    mockPrismaUserAgentUpdateMany.mockResolvedValue({ count: 1 });
+    mockPrismaUserUpdate.mockResolvedValue({});
+
+    const res = await POST(makeRequest(JSON.stringify(sessionPayload), 'valid_sig'));
+    expect(res.status).toBe(200);
+
+    expect(mockPrismaUserAgentUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ userId: 'user_1' }),
+        data:  { setupFeePaid: true },
+      })
+    );
+    expect(mockPrismaUserAgentUpdate).not.toHaveBeenCalled();
   });
 
   it('handles gracefully when no invoice matches stripeCheckoutSessionId on completed event', async () => {

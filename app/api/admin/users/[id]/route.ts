@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { createSetupFeeInvoiceForAgent } from '@/lib/billing-service';
 
 const updateUserSchema = z.object({
   status: z.enum(['PENDING', 'ACTIVE', 'INACTIVE']).optional(),
@@ -64,7 +65,15 @@ export async function PATCH(
     // so historical call logs remain visible (calls are filtered by assignedAt).
     for (const agentRecord of agentRecords) {
       const input = agents.find(a => a.agentId === agentRecord.retellAgentId);
-      await prisma.userAgent.upsert({
+
+      // Pre-check: is this a brand-new assignment?
+      const existingUA = await prisma.userAgent.findUnique({
+        where:  { userId_agentId: { userId: id, agentId: agentRecord.id } },
+        select: { id: true },
+      });
+      const isNew = !existingUA;
+
+      const upserted = await prisma.userAgent.upsert({
         where:  { userId_agentId: { userId: id, agentId: agentRecord.id } },
         update: {
           costMultiplier: input?.costMultiplier ?? null,
@@ -82,6 +91,11 @@ export async function PATCH(
           assignedBy:     session.user.id,
         },
       });
+
+      // Immediately create a standalone SETUP invoice for new assignments with a fee
+      if (isNew && input?.setupFee && Number(input.setupFee) > 0) {
+        await createSetupFeeInvoiceForAgent(upserted.id);
+      }
     }
   }
 

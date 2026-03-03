@@ -1,4 +1,4 @@
-import { buildLineItems, computeSubtotal, generateInvoiceNumber, isInvoiceOverdue, AgentInput } from '../lib/billing-engine';
+import { buildLineItems, computeSubtotal, generateInvoiceNumber, isInvoiceOverdue, computeAgentBillingPeriod, AgentInput } from '../lib/billing-engine';
 
 const PERIOD_START = new Date('2026-02-01T00:00:00.000Z');
 const PERIOD_END   = new Date('2026-02-28T23:59:59.999Z');
@@ -265,38 +265,127 @@ describe('buildLineItems — two agents', () => {
 });
 
 // ---------------------------------------------------------------------------
-// isInvoiceOverdue — automated overdue detection (no admin needed)
+// computeAgentBillingPeriod — anniversary-based billing
+// ---------------------------------------------------------------------------
+describe('computeAgentBillingPeriod', () => {
+  function d(iso: string) { return new Date(iso); }
+
+  it('Jan 15 assigned, now Jan 20 → period Jan 15 – Feb 14', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-15T00:00:00.000Z'), d('2026-01-20T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-01-15T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-02-14T23:59:59.999Z'));
+  });
+
+  it('Jan 15 assigned, now Feb 15 (anniversary) → period Feb 15 – Mar 14', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-15T00:00:00.000Z'), d('2026-02-15T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-02-15T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-03-14T23:59:59.999Z'));
+  });
+
+  it('Jan 15 assigned, now Feb 14 (last day of period) → period Jan 15 – Feb 14', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-15T00:00:00.000Z'), d('2026-02-14T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-01-15T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-02-14T23:59:59.999Z'));
+  });
+
+  it('Jan 15 assigned, now Mar 1 → period Feb 15 – Mar 14', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-15T00:00:00.000Z'), d('2026-03-01T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-02-15T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-03-14T23:59:59.999Z'));
+  });
+
+  it('Mar 20 assigned, now Mar 20 (same day) → period Mar 20 – Apr 19', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-03-20T00:00:00.000Z'), d('2026-03-20T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-03-20T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-04-19T23:59:59.999Z'));
+  });
+
+  it('Jan 31 assigned, now Feb 15 → period Jan 31 – Feb 27 (capped)', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-31T00:00:00.000Z'), d('2026-02-15T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-01-31T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-02-27T23:59:59.999Z'));
+  });
+
+  it('Jan 31 assigned, now Mar 15 → period Feb 28 – Mar 30 (capped)', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-31T00:00:00.000Z'), d('2026-03-15T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-02-28T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-03-30T23:59:59.999Z'));
+  });
+
+  it('Mar 31 assigned, now Apr 15 → period Mar 31 – Apr 29 (capped)', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-03-31T00:00:00.000Z'), d('2026-04-15T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-03-31T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-04-29T23:59:59.999Z'));
+  });
+
+  it('Jan 1 2025 assigned, now Jan 5 2026 → period Jan 1 2026 – Jan 31 2026', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2025-01-01T00:00:00.000Z'), d('2026-01-05T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-01-01T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-01-31T23:59:59.999Z'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isInvoiceOverdue — 8-day grace period from period start (due on day 8)
 // ---------------------------------------------------------------------------
 describe('isInvoiceOverdue', () => {
-  const PAST_END   = new Date('2026-01-31T23:59:59.999Z'); // period already closed
-  const FUTURE_END = new Date('2099-12-31T23:59:59.999Z'); // period still open
-  const NOW        = new Date('2026-02-15T12:00:00.000Z');
+  const PERIOD_START_JAN = new Date('2026-01-01T00:00:00.000Z');
 
-  it('returns true when DRAFT and billing period has ended', () => {
-    expect(isInvoiceOverdue('DRAFT', PAST_END, NOW)).toBe(true);
+  it('returns false when DRAFT on day 7 (inside grace period)', () => {
+    const now = new Date('2026-01-08T00:00:00.000Z'); // Jan 1 + 7 days
+    expect(isInvoiceOverdue('DRAFT', PERIOD_START_JAN, now)).toBe(false);
   });
 
-  it('returns true when PENDING and billing period has ended', () => {
-    expect(isInvoiceOverdue('PENDING', PAST_END, NOW)).toBe(true);
+  it('returns true when DRAFT on day 8 exactly (overdue on day 8)', () => {
+    const now = new Date('2026-01-09T00:00:00.000Z'); // Jan 1 + 8 days
+    expect(isInvoiceOverdue('DRAFT', PERIOD_START_JAN, now)).toBe(true);
   });
 
-  it('returns false when PAID — already settled', () => {
-    expect(isInvoiceOverdue('PAID', PAST_END, NOW)).toBe(false);
+  it('returns true when DRAFT on day 14 (past grace period)', () => {
+    const now = new Date('2026-01-15T00:00:00.000Z');
+    expect(isInvoiceOverdue('DRAFT', PERIOD_START_JAN, now)).toBe(true);
+  });
+
+  it('returns true when PENDING on day 8 (payment in-flight, still overdue)', () => {
+    const now = new Date('2026-01-09T00:00:00.000Z');
+    expect(isInvoiceOverdue('PENDING', PERIOD_START_JAN, now)).toBe(true);
+  });
+
+  it('returns false when PAID on day 8 — already settled', () => {
+    const now = new Date('2026-01-09T00:00:00.000Z');
+    expect(isInvoiceOverdue('PAID', PERIOD_START_JAN, now)).toBe(false);
   });
 
   it('returns false when already OVERDUE — no double-transition', () => {
-    expect(isInvoiceOverdue('OVERDUE', PAST_END, NOW)).toBe(false);
+    const now = new Date('2026-01-09T00:00:00.000Z');
+    expect(isInvoiceOverdue('OVERDUE', PERIOD_START_JAN, now)).toBe(false);
   });
 
-  it('returns false when CANCELLED', () => {
-    expect(isInvoiceOverdue('CANCELLED', PAST_END, NOW)).toBe(false);
+  it('returns false when CANCELLED on day 8', () => {
+    const now = new Date('2026-01-09T00:00:00.000Z');
+    expect(isInvoiceOverdue('CANCELLED', PERIOD_START_JAN, now)).toBe(false);
   });
 
-  it('returns false when period has NOT ended yet', () => {
-    expect(isInvoiceOverdue('DRAFT', FUTURE_END, NOW)).toBe(false);
-  });
-
-  it('returns false when now equals periodEnd exactly (boundary — not yet overdue)', () => {
-    expect(isInvoiceOverdue('DRAFT', NOW, NOW)).toBe(false);
+  it('returns false when DRAFT on day 0 (same day as period start)', () => {
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    expect(isInvoiceOverdue('DRAFT', PERIOD_START_JAN, now)).toBe(false);
   });
 });

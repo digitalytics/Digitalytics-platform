@@ -2,6 +2,7 @@ import {
   resolveInvoiceAction,
   buildInvoiceNumber,
   resolveGetBillButton,
+  buildAgentInvoiceNumber,
   type SlimInvoice,
 } from '../lib/billing-service';
 
@@ -106,5 +107,71 @@ describe('resolveGetBillButton', () => {
   });
   it('returns enabled "Get Bill" when invoice is CANCELLED', () => {
     expect(resolveGetBillButton('CANCELLED')).toEqual({ label: 'Get Bill', disabled: false });
+  });
+});
+
+// ── ensureBillingUpToDate ──────────────────────────────────────────────────────
+
+describe('ensureBillingUpToDate', () => {
+  it('is exported from billing-service', () => {
+    const { ensureBillingUpToDate } = require('@/lib/billing-service');
+    expect(typeof ensureBillingUpToDate).toBe('function');
+  });
+});
+
+// ── buildAgentInvoiceNumber ───────────────────────────────────────────────────
+
+describe('buildAgentInvoiceNumber', () => {
+  const userId      = 'clxabc123456';
+  const userAgentId = 'ua1234567890';
+  const year        = 2026;
+  const month       = 3; // March
+
+  it('generates MONTHLY format: INV-YYYYMM-USERID6-UAGENTID6', () => {
+    const result = buildAgentInvoiceNumber(userId, userAgentId, year, month, 'MONTHLY', new Set());
+    expect(result).toBe('INV-202603-CLXABC-UA1234');
+  });
+
+  it('generates SETUP format: INV-SETUP-YYYYMM-USERID6-UAGENTID6', () => {
+    const result = buildAgentInvoiceNumber(userId, userAgentId, year, month, 'SETUP', new Set());
+    expect(result).toBe('INV-SETUP-202603-CLXABC-UA1234');
+  });
+
+  it('appends -2 on collision, increments until free', () => {
+    const taken = new Set(['INV-202603-CLXABC-UA1234', 'INV-202603-CLXABC-UA1234-2']);
+    const result = buildAgentInvoiceNumber(userId, userAgentId, year, month, 'MONTHLY', taken);
+    expect(result).toBe('INV-202603-CLXABC-UA1234-3');
+  });
+
+  it('zero-pads single-digit months', () => {
+    const result = buildAgentInvoiceNumber(userId, userAgentId, 2026, 3, 'MONTHLY', new Set());
+    expect(result).toBe('INV-202603-CLXABC-UA1234');
+  });
+});
+
+// ── createSetupFeeInvoiceForAgent — export check ──────────────────────────────
+
+describe('createSetupFeeInvoiceForAgent', () => {
+  it('is exported', () => {
+    const { createSetupFeeInvoiceForAgent } = require('@/lib/billing-service');
+    expect(typeof createSetupFeeInvoiceForAgent).toBe('function');
+  });
+});
+
+// ── ensureMonthlyInvoiceForAgent — export check ───────────────────────────────
+
+describe('ensureMonthlyInvoiceForAgent', () => {
+  it('is exported', () => {
+    const { ensureMonthlyInvoiceForAgent } = require('@/lib/billing-service');
+    expect(typeof ensureMonthlyInvoiceForAgent).toBe('function');
+  });
+});
+
+// ── ensureBillingUpToDateForUser — export check ───────────────────────────────
+
+describe('ensureBillingUpToDateForUser', () => {
+  it('is exported', () => {
+    const { ensureBillingUpToDateForUser } = require('@/lib/billing-service');
+    expect(typeof ensureBillingUpToDateForUser).toBe('function');
   });
 });

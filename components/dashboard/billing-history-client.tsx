@@ -27,6 +27,8 @@ interface LineItem {
 interface Invoice {
   id:            string;
   invoiceNumber: string;
+  invoiceType:   string;
+  agentName:     string | null;
   periodStart:   string;
   periodEnd:     string;
   status:        string;
@@ -90,8 +92,12 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
               <Badge variant={STATUS_VARIANT[invoice.status] ?? 'neutral'}>
                 {invoice.status}
               </Badge>
+              <Badge variant="neutral">
+                {invoice.invoiceType === 'SETUP' ? 'Setup Fee' : 'Monthly'}
+              </Badge>
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
+              {invoice.agentName && <span className="font-medium">{invoice.agentName} · </span>}
               {formatPeriod(invoice.periodStart)}
               {invoice.paidAt && ` · Paid ${formatDate(invoice.paidAt)}`}
             </p>
@@ -136,6 +142,7 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
 
       {open && (
         <div className="border-t border-gray-100">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
@@ -173,6 +180,7 @@ function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }: Invoice
               </tr>
             </tfoot>
           </table>
+          </div>
         </div>
       )}
     </div>

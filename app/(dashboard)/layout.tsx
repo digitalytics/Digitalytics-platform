@@ -15,11 +15,11 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardSidebar user={session.user} />
-      <div className="pl-60">
-        <header className="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-3 flex items-center justify-end">
+      <div className="md:pl-60">
+        <header className="sticky top-0 z-20 bg-white border-b border-gray-200 pl-14 pr-4 md:px-8 py-3 flex items-center justify-end">
           <NotificationBell />
         </header>
-        <main className="p-8">{children}</main>
+        <main className="p-4 md:p-8">{children}</main>
       </div>
     </div>
   );

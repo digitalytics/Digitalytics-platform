@@ -167,6 +167,8 @@ async function POST(req) {
                         select: {
                             id: true,
                             userId: true,
+                            invoiceType: true,
+                            userAgentId: true,
                             lineItems: {
                                 where: {
                                     type: 'SETUP_FEE'
@@ -188,20 +190,33 @@ async function POST(req) {
                             stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : null
                         }
                     });
-                    // Mark setup fees as paid on each affected UserAgent
-                    const setupFeeAgentIds = invoice.lineItems.map((li)=>li.agentId).filter((id)=>id != null);
-                    if (setupFeeAgentIds.length > 0) {
-                        await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].userAgent.updateMany({
+                    // Mark setup fee as paid on the UserAgent
+                    if (invoice.invoiceType === 'SETUP' && invoice.userAgentId) {
+                        // New per-agent SETUP invoice — direct update via userAgentId
+                        await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].userAgent.update({
                             where: {
-                                userId: invoice.userId,
-                                agentId: {
-                                    in: setupFeeAgentIds
-                                }
+                                id: invoice.userAgentId
                             },
                             data: {
                                 setupFeePaid: true
                             }
                         });
+                    } else {
+                        // Legacy path: old combined invoices may have SETUP_FEE line items
+                        const setupFeeAgentIds = invoice.lineItems.filter((li)=>li.agentId != null).map((li)=>li.agentId);
+                        if (setupFeeAgentIds.length > 0) {
+                            await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].userAgent.updateMany({
+                                where: {
+                                    userId: invoice.userId,
+                                    agentId: {
+                                        in: setupFeeAgentIds
+                                    }
+                                },
+                                data: {
+                                    setupFeePaid: true
+                                }
+                            });
+                        }
                     }
                     // Sync stripeCustomerId on user if not already set
                     if (session.customer && typeof session.customer === 'string') {

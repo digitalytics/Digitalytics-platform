@@ -16,13 +16,18 @@ export default async function BillingHistoryPage() {
   // Fetch ALL non-cancelled invoices, newest first
   const invoicesRaw = await prisma.invoice.findMany({
     where:   { userId, status: { not: 'CANCELLED' } },
-    include: { lineItems: { orderBy: { type: 'asc' } } },
+    include: {
+      lineItems:  { orderBy: { type: 'asc' } },
+      userAgent:  { include: { agent: { select: { name: true } } } },
+    },
     orderBy: [{ periodStart: 'desc' }, { createdAt: 'desc' }],
   });
 
   const invoices = invoicesRaw.map(inv => ({
     id:            inv.id,
     invoiceNumber: inv.invoiceNumber,
+    invoiceType:   inv.invoiceType as string,
+    agentName:     inv.userAgent?.agent?.name ?? null,
     periodStart:   inv.periodStart.toISOString(),
     periodEnd:     inv.periodEnd.toISOString(),
     status:        inv.status as string,

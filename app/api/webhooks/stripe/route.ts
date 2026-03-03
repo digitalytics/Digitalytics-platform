@@ -48,9 +48,11 @@ export async function POST(req: Request) {
         const invoice = await prisma.invoice.findFirst({
           where:  { id: invoiceId, stripeCheckoutSessionId: session.id },
           select: {
-            id:        true,
-            userId:    true,
-            lineItems: { where: { type: 'SETUP_FEE' }, select: { agentId: true } },
+            id:          true,
+            userId:      true,
+            invoiceType: true,
+            userAgentId: true,
+            lineItems:   { where: { type: 'SETUP_FEE' }, select: { agentId: true } },
           },
         });
 
@@ -67,16 +69,25 @@ export async function POST(req: Request) {
           },
         });
 
-        // Mark setup fees as paid on each affected UserAgent
-        const setupFeeAgentIds = invoice.lineItems
-          .map(li => li.agentId)
-          .filter((id): id is string => id != null);
-
-        if (setupFeeAgentIds.length > 0) {
-          await prisma.userAgent.updateMany({
-            where: { userId: invoice.userId, agentId: { in: setupFeeAgentIds } },
+        // Mark setup fee as paid on the UserAgent
+        if (invoice.invoiceType === 'SETUP' && invoice.userAgentId) {
+          // New per-agent SETUP invoice — direct update via userAgentId
+          await prisma.userAgent.update({
+            where: { id: invoice.userAgentId },
             data:  { setupFeePaid: true },
           });
+        } else {
+          // Legacy path: old combined invoices may have SETUP_FEE line items
+          const setupFeeAgentIds = invoice.lineItems
+            .filter(li => li.agentId != null)
+            .map(li => li.agentId as string);
+
+          if (setupFeeAgentIds.length > 0) {
+            await prisma.userAgent.updateMany({
+              where: { userId: invoice.userId, agentId: { in: setupFeeAgentIds } },
+              data:  { setupFeePaid: true },
+            });
+          }
         }
 
         // Sync stripeCustomerId on user if not already set
