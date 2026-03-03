@@ -251,7 +251,15 @@ export function BillingHistoryClient({ invoices }: Props) {
 
       {/* Invoice list */}
       {invoices.map(inv => {
-        const { canPay, blockMessage } = resolveInvoicePayability(inv, overdueBlocker);
+        const { canPay: basePay, blockMessage: baseMsg } = resolveInvoicePayability(inv, overdueBlocker);
+
+        // Pay Now is only available once the billing period has fully elapsed
+        const periodComplete = new Date(inv.periodEnd) <= new Date();
+        const canPay = basePay && periodComplete;
+        const blockMessage = !periodComplete
+          ? `Available after period ends (${new Date(inv.periodEnd).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })})`
+          : baseMsg;
+
         return (
           <InvoiceCard
             key={inv.id}
