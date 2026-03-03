@@ -74,6 +74,7 @@ export function BillingUserClient({ user, invoices }: { user: User; invoices: In
             No invoices for this user yet.
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -109,6 +110,7 @@ export function BillingUserClient({ user, invoices }: { user: User; invoices: In
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -131,6 +133,7 @@ export function BillingUserClient({ user, invoices }: { user: User; invoices: In
             </div>
 
             <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -159,6 +162,7 @@ export function BillingUserClient({ user, invoices }: { user: User; invoices: In
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
 
             <div className="border-t border-gray-200 pt-3 space-y-1">

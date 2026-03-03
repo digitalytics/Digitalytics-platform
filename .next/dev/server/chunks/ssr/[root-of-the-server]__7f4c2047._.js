@@ -84,6 +84,7 @@ async function CallsPage({ searchParams }) {
     const outcome = params.outcome;
     // Get accessible agent IDs
     let assignedAgents;
+    let costMultiplierMap = {};
     // Build the call filter where clause
     let callWhere;
     if (session.user.role === 'ADMIN') {
@@ -118,6 +119,10 @@ async function CallsPage({ searchParams }) {
             }
         });
         assignedAgents = userAgents.filter((ua)=>ua.agent.isActive).map((ua)=>ua.agent);
+        costMultiplierMap = Object.fromEntries(userAgents.map((ua)=>[
+                ua.agent.retellAgentId,
+                ua.costMultiplier ? Number(ua.costMultiplier) : null
+            ]));
         if (agentId) {
             // Single agent filter: apply that agent's assignedAt
             const targetUa = userAgents.find((ua)=>ua.agent.retellAgentId === agentId);
@@ -174,13 +179,27 @@ async function CallsPage({ searchParams }) {
                 endTimestamp: true,
                 durationMs: true,
                 callSuccessful: true,
-                userSentiment: true
+                userSentiment: true,
+                totalCost: true,
+                costDetails: true
             }
         }),
         __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].call.count({
             where: callWhere
         })
     ]);
+    const callsWithCost = calls.map((c)=>({
+            callId: c.callId,
+            agentId: c.agentId,
+            agentName: c.agentName,
+            callStatus: c.callStatus,
+            startTimestamp: c.startTimestamp.toISOString(),
+            durationMs: c.durationMs,
+            callSuccessful: c.callSuccessful,
+            userSentiment: c.userSentiment,
+            userCost: c.totalCost && costMultiplierMap[c.agentId] != null ? Math.round(Number(c.totalCost) * costMultiplierMap[c.agentId] * 100) / 100 : null,
+            costDetails: c.costDetails ?? null
+        }));
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: "space-y-6",
         children: [
@@ -191,7 +210,7 @@ async function CallsPage({ searchParams }) {
                         children: "Call Logs"
                     }, void 0, false, {
                         fileName: "[project]/app/(dashboard)/calls/page.tsx",
-                        lineNumber: 102,
+                        lineNumber: 124,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -202,17 +221,17 @@ async function CallsPage({ searchParams }) {
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/(dashboard)/calls/page.tsx",
-                        lineNumber: 103,
+                        lineNumber: 125,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/(dashboard)/calls/page.tsx",
-                lineNumber: 101,
+                lineNumber: 123,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$dashboard$2f$calls$2d$page$2d$client$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["CallsPageClient"], {
-                initialCalls: calls,
+                initialCalls: callsWithCost,
                 totalCalls: total,
                 page: page,
                 limit: limit,
@@ -224,13 +243,13 @@ async function CallsPage({ searchParams }) {
                 }
             }, void 0, false, {
                 fileName: "[project]/app/(dashboard)/calls/page.tsx",
-                lineNumber: 108,
+                lineNumber: 130,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/(dashboard)/calls/page.tsx",
-        lineNumber: 100,
+        lineNumber: 122,
         columnNumber: 5
     }, this);
 }

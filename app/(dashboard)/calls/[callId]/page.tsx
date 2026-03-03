@@ -2,10 +2,12 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Phone, Clock, Calendar, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Phone, Clock, Calendar, CheckCircle, XCircle, DollarSign } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { TranscriptViewer } from '@/components/dashboard/transcript-viewer';
+import { CallCostBreakdown } from '@/components/dashboard/call-cost-breakdown';
+import { computeUserCost, totalCostFromDetails, formatUserCostDisplay } from '@/lib/call-cost-utils';
 import { formatDateTime, formatDuration, getStatusColor, getSentimentColor } from '@/lib/utils';
 
 export default async function CallDetailPage({
@@ -29,15 +31,22 @@ export default async function CallDetailPage({
 
   if (!call) notFound();
 
-  // Verify access
+  // Verify access and get costMultiplier for non-admins
+  let userCost: number | null = null;
   if (session.user.role !== 'ADMIN') {
-    const hasAccess = await prisma.userAgent.findFirst({
+    const userAgent = await prisma.userAgent.findFirst({
       where: {
         userId: session.user.id,
         agent: { retellAgentId: call.agentId },
       },
     });
-    if (!hasAccess) notFound();
+    if (!userAgent) notFound();
+    userCost = computeUserCost(
+      call.totalCost
+        ? Number(call.totalCost)
+        : totalCostFromDetails(call.costDetails as { combined_cost?: number } | null),
+      userAgent.costMultiplier ? Number(userAgent.costMultiplier) : null,
+    );
   }
 
   const agentLabel = call.agentName || call.agentId;
@@ -103,6 +112,16 @@ export default async function CallDetailPage({
             <p className="text-xs text-gray-400 mb-0.5">Agent ID</p>
             <p className="text-xs text-gray-500 font-mono truncate">{call.agentId}</p>
           </div>
+          {userCost != null && (
+            <div>
+              <p className="text-xs text-gray-400 mb-0.5">Call Cost</p>
+              <div className="flex items-center gap-1.5">
+                <DollarSign size={13} className="text-gray-400" />
+                <span className="text-sm font-semibold text-gray-900">{formatUserCostDisplay(userCost)}</span>
+                <CallCostBreakdown userCost={userCost} costDetails={call.costDetails} durationMs={call.durationMs} />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -49,7 +49,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     size: 15
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 68,
+                                    lineNumber: 71,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -57,13 +57,13 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "Filters"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 69,
+                                    lineNumber: 72,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                            lineNumber: 67,
+                            lineNumber: 70,
                             columnNumber: 11
                         }, this),
                         agents.length > 1 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("select", {
@@ -76,7 +76,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "All agents"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 78,
+                                    lineNumber: 81,
                                     columnNumber: 15
                                 }, this),
                                 agents.map((a)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -84,13 +84,13 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                         children: a.name
                                     }, a.retellAgentId, false, {
                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                        lineNumber: 80,
+                                        lineNumber: 83,
                                         columnNumber: 17
                                     }, this))
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                            lineNumber: 73,
+                            lineNumber: 76,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("select", {
@@ -103,7 +103,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "All statuses"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 90,
+                                    lineNumber: 93,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -111,7 +111,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "Ended"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 91,
+                                    lineNumber: 94,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -119,7 +119,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "Ongoing"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 92,
+                                    lineNumber: 95,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -127,7 +127,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "Registered"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 93,
+                                    lineNumber: 96,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -135,7 +135,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "Error"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 94,
+                                    lineNumber: 97,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -143,13 +143,13 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "Not Connected"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 95,
+                                    lineNumber: 98,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                            lineNumber: 85,
+                            lineNumber: 88,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("select", {
@@ -162,7 +162,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "All outcomes"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 103,
+                                    lineNumber: 106,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -170,7 +170,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "Successful"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 104,
+                                    lineNumber: 107,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -178,13 +178,13 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                     children: "Unsuccessful"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 105,
+                                    lineNumber: 108,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                            lineNumber: 98,
+                            lineNumber: 101,
                             columnNumber: 11
                         }, this),
                         hasActiveFilters && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -193,18 +193,18 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                             children: "Clear all"
                         }, void 0, false, {
                             fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                            lineNumber: 109,
+                            lineNumber: 112,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                    lineNumber: 66,
+                    lineNumber: 69,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                lineNumber: 65,
+                lineNumber: 68,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -215,7 +215,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                         children: "No calls found."
                     }, void 0, false, {
                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                        lineNumber: 122,
+                        lineNumber: 125,
                         columnNumber: 11
                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "overflow-x-auto",
@@ -231,7 +231,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                 children: "Date & Time"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                lineNumber: 128,
+                                                lineNumber: 131,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -239,7 +239,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                 children: "Agent"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                lineNumber: 129,
+                                                lineNumber: 132,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -247,7 +247,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                 children: "Duration"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                lineNumber: 130,
+                                                lineNumber: 133,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -255,7 +255,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                 children: "Status"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                lineNumber: 131,
+                                                lineNumber: 134,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -263,7 +263,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                 children: "Outcome"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                lineNumber: 132,
+                                                lineNumber: 135,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -271,18 +271,26 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                 children: "Sentiment"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                lineNumber: 133,
+                                                lineNumber: 136,
+                                                columnNumber: 19
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
+                                                className: "text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide",
+                                                children: "Cost"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/dashboard/calls-page-client.tsx",
+                                                lineNumber: 137,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                        lineNumber: 127,
+                                        lineNumber: 130,
                                         columnNumber: 17
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 126,
+                                    lineNumber: 129,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("tbody", {
@@ -298,12 +306,12 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                         children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["formatDateTime"])(call.startTimestamp)
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                        lineNumber: 140,
+                                                        lineNumber: 144,
                                                         columnNumber: 23
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                    lineNumber: 139,
+                                                    lineNumber: 143,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -311,7 +319,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                     children: call.agentName || call.agentId.slice(0, 16) + '…'
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                    lineNumber: 147,
+                                                    lineNumber: 151,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -319,7 +327,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                     children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["formatDuration"])(call.durationMs)
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                    lineNumber: 150,
+                                                    lineNumber: 154,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -329,12 +337,12 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                         children: call.callStatus.replace('_', ' ')
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                        lineNumber: 154,
+                                                        lineNumber: 158,
                                                         columnNumber: 23
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                    lineNumber: 153,
+                                                    lineNumber: 157,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -344,19 +352,19 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                         children: "—"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                        lineNumber: 160,
+                                                        lineNumber: 164,
                                                         columnNumber: 25
                                                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                                         className: `inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${call.callSuccessful ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`,
                                                         children: call.callSuccessful ? 'Successful' : 'Unsuccessful'
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                        lineNumber: 162,
+                                                        lineNumber: 166,
                                                         columnNumber: 25
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                    lineNumber: 158,
+                                                    lineNumber: 162,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -366,41 +374,41 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                                         children: call.userSentiment
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                        lineNumber: 169,
+                                                        lineNumber: 173,
                                                         columnNumber: 25
                                                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                                         className: "text-gray-300 text-xs",
                                                         children: "—"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                        lineNumber: 173,
+                                                        lineNumber: 177,
                                                         columnNumber: 25
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                                    lineNumber: 167,
+                                                    lineNumber: 171,
                                                     columnNumber: 21
                                                 }, this)
                                             ]
                                         }, call.callId, true, {
                                             fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                            lineNumber: 138,
+                                            lineNumber: 142,
                                             columnNumber: 19
                                         }, this))
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                    lineNumber: 136,
+                                    lineNumber: 140,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                            lineNumber: 125,
+                            lineNumber: 128,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                        lineNumber: 124,
+                        lineNumber: 127,
                         columnNumber: 11
                     }, this),
                     totalPages > 1 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -418,7 +426,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                lineNumber: 186,
+                                lineNumber: 190,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -431,12 +439,12 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                             size: 16
                                         }, void 0, false, {
                                             fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                            lineNumber: 194,
+                                            lineNumber: 198,
                                             columnNumber: 17
                                         }, this)
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                        lineNumber: 190,
+                                        lineNumber: 194,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -449,7 +457,7 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                        lineNumber: 196,
+                                        lineNumber: 200,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$app$2d$dir$2f$link$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["default"], {
@@ -459,36 +467,36 @@ function CallsPageClient({ initialCalls, totalCalls, page, limit, agents, filter
                                             size: 16
                                         }, void 0, false, {
                                             fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                            lineNumber: 203,
+                                            lineNumber: 207,
                                             columnNumber: 17
                                         }, this)
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                        lineNumber: 199,
+                                        lineNumber: 203,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                                lineNumber: 189,
+                                lineNumber: 193,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                        lineNumber: 185,
+                        lineNumber: 189,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/dashboard/calls-page-client.tsx",
-                lineNumber: 120,
+                lineNumber: 123,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/dashboard/calls-page-client.tsx",
-        lineNumber: 63,
+        lineNumber: 66,
         columnNumber: 5
     }, this);
 }

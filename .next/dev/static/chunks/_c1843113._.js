@@ -55,8 +55,8 @@ function buildLineItems(agents) {
                 total: ag.setupFee
             });
         }
-        // MONTHLY_FEE
-        if (ag.monthlyFee) {
+        // MONTHLY_FEE — only if not already charged on another invoice for this period
+        if (ag.monthlyFee && !ag.monthlyFeeAlreadyBilled) {
             items.push({
                 type: 'MONTHLY_FEE',
                 agentId: ag.retellAgentId,
@@ -67,29 +67,30 @@ function buildLineItems(agents) {
                 total: ag.monthlyFee
             });
         }
-        // USAGE_FEE — usageMs is pre-filtered from DB (assignedAt lower bound already applied)
-        if (ag.customPrice && ag.usageMs > 0) {
-            const minutes = ag.usageMs / 60000;
-            const total = Math.round(minutes * ag.customPrice * 100) / 100;
+        // USAGE_FEE — usageCost is pre-filtered from DB (assignedAt lower bound already applied)
+        if (ag.costMultiplier && ag.usageCost > 0) {
+            const total = Math.round(ag.usageCost * ag.costMultiplier * 100) / 100;
             items.push({
                 type: 'USAGE_FEE',
                 agentId: ag.retellAgentId,
                 agentName: ag.agentName,
-                description: `Usage — ${ag.agentName} (${minutes.toFixed(4)} min)`,
-                quantity: Math.round(minutes * 10000) / 10000,
-                unitPrice: ag.customPrice,
+                description: `Usage — ${ag.agentName}`,
+                quantity: ag.usageCost,
+                unitPrice: ag.costMultiplier,
                 total
             });
         }
     }
     return items;
 }
-function isInvoiceOverdue(status, periodEnd, now) {
+function isInvoiceOverdue(status, periodStart, now) {
     if (![
         'DRAFT',
         'PENDING'
     ].includes(status)) return false;
-    return now > periodEnd;
+    const dueDate = new Date(periodStart);
+    dueDate.setDate(dueDate.getDate() + 8); // due on day 8 (e.g. Jan 9 for Jan 1 start)
+    return now >= dueDate;
 }
 function computeSubtotal(items) {
     return Math.round(items.reduce((s, l)=>s + l.total, 0) * 100) / 100;
@@ -112,12 +113,18 @@ __turbopack_context__.s([
     ()=>autoMarkOverdueForUser,
     "buildInvoiceNumber",
     ()=>buildInvoiceNumber,
+    "ensureBillingUpToDate",
+    ()=>ensureBillingUpToDate,
     "ensureCurrentInvoice",
     ()=>ensureCurrentInvoice,
+    "getOldestOverdueInvoice",
+    ()=>getOldestOverdueInvoice,
     "resolveGetBillButton",
     ()=>resolveGetBillButton,
     "resolveInvoiceAction",
-    ()=>resolveInvoiceAction
+    ()=>resolveInvoiceAction,
+    "resolveInvoicePayability",
+    ()=>resolveInvoicePayability
 ]);
 /**
  * Billing service — orchestrates billing-engine (pure) + Prisma.
@@ -133,6 +140,38 @@ __turbopack_context__.s([
 var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/lib/billing-engine.ts [app-client] (ecmascript)");
 ;
 ;
+function getOldestOverdueInvoice(invoices) {
+    const overdue = invoices.filter((inv)=>inv.status === 'OVERDUE');
+    if (overdue.length === 0) return null;
+    return overdue.sort((a, b)=>a.periodStart.localeCompare(b.periodStart))[0];
+}
+function resolveInvoicePayability(invoice, overdueBlocker) {
+    // Already settled — cannot pay
+    if (invoice.status === 'PAID' || invoice.status === 'CANCELLED') {
+        return {
+            canPay: false,
+            blockMessage: null
+        };
+    }
+    // Payment already in-flight
+    if (invoice.status === 'PENDING') {
+        return {
+            canPay: false,
+            blockMessage: null
+        };
+    }
+    // DRAFT or OVERDUE — check blocker
+    if (overdueBlocker && overdueBlocker.id !== invoice.id) {
+        return {
+            canPay: false,
+            blockMessage: 'Please pay overdue invoice first.'
+        };
+    }
+    return {
+        canPay: true,
+        blockMessage: null
+    };
+}
 function resolveGetBillButton(status) {
     if (status === 'DRAFT') return {
         label: 'Update Bill',
@@ -142,7 +181,12 @@ function resolveGetBillButton(status) {
         label: 'Get Bill',
         disabled: false
     };
-    // PENDING / PAID / OVERDUE — invoice is finalised, cannot regenerate
+    // PAID — invoice is paid but new calls may have accrued; allow supplement invoice
+    if (status === 'PAID') return {
+        label: 'Get Bill',
+        disabled: false
+    };
+    // PENDING / OVERDUE — payment in-flight or past-due; don't regenerate
     return {
         label: 'Get Bill',
         disabled: true
@@ -185,10 +229,10 @@ async function autoMarkOverdueForUser(userId) {
         select: {
             id: true,
             status: true,
-            periodEnd: true
+            periodStart: true
         }
     });
-    const overdueIds = candidates.filter((inv)=>(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["isInvoiceOverdue"])(inv.status, inv.periodEnd, now)).map((inv)=>inv.id);
+    const overdueIds = candidates.filter((inv)=>(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["isInvoiceOverdue"])(inv.status, inv.periodStart, now)).map((inv)=>inv.id);
     if (overdueIds.length === 0) return;
     await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoice.updateMany({
         where: {
@@ -205,8 +249,8 @@ async function ensureCurrentInvoice(userId) {
     const now = new Date();
     const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    // Find the active (non-cancelled) invoice for this period, if any
-    const existing = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoice.findFirst({
+    // Find ALL non-cancelled invoices for the current period (paidAt needed for supplement start)
+    const periodInvoices = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoice.findMany({
         where: {
             userId,
             periodStart,
@@ -216,106 +260,108 @@ async function ensureCurrentInvoice(userId) {
         },
         select: {
             id: true,
-            status: true
+            status: true,
+            paidAt: true
         }
     });
-    const action = resolveInvoiceAction(existing ? {
-        id: existing.id,
-        status: existing.status
-    } : null);
-    // NOOP — invoice is finalised, just return it
-    if (action.type === 'noop') {
-        return __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoice.findUnique({
+    // If a PAID invoice exists for this period, supplement invoices must only count calls
+    // that occurred AFTER that payment — otherwise the same calls get billed twice.
+    const mostRecentPaidAt = periodInvoices.filter((inv)=>inv.status === 'PAID' && inv.paidAt != null).reduce((latest, inv)=>latest == null || inv.paidAt > latest ? inv.paidAt : latest, null);
+    // 1. Prefer DRAFT — recalculate it to pick up new usage
+    const draftInvoice = periodInvoices.find((inv)=>inv.status === 'DRAFT');
+    if (draftInvoice) {
+        // Use the recalculate path by synthesising the action
+        const action = {
+            type: 'recalculate',
+            invoiceId: draftInvoice.id
+        };
+        // Fetch user's agent assignments (needed below)
+        const userAgentsForRecalc = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].userAgent.findMany({
             where: {
-                id: action.invoiceId
+                userId
             },
             include: {
-                lineItems: {
-                    orderBy: {
-                        type: 'asc'
-                    }
-                }
+                agent: true
             }
         });
-    }
-    // Fetch user's agent assignments
-    const userAgents = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].userAgent.findMany({
-        where: {
-            userId
-        },
-        include: {
-            agent: true
-        }
-    });
-    if (userAgents.length === 0) return null;
-    // Build agent inputs (resolve setup-fee billing status + usage)
-    const agentInputs = await Promise.all(userAgents.map(async (ua)=>{
-        const agentRetellId = ua.agent.retellAgentId;
-        // Setup fee already billed on a *different* non-cancelled invoice?
-        const setupFeeAlreadyBilled = ua.setupFee ? !!await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoiceLineItem.findFirst({
-            where: {
-                type: 'SETUP_FEE',
-                agentId: agentRetellId,
-                invoice: {
-                    userId,
-                    status: {
-                        not: 'CANCELLED'
-                    },
-                    // When recalculating, exclude the current draft
-                    ...action.type === 'recalculate' ? {
+        if (userAgentsForRecalc.length === 0) return null;
+        const agentInputsForRecalc = await Promise.all(userAgentsForRecalc.map(async (ua)=>{
+            const agentRetellId = ua.agent.retellAgentId;
+            const setupFeeAlreadyBilled = ua.setupFee ? !!await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoiceLineItem.findFirst({
+                where: {
+                    type: 'SETUP_FEE',
+                    agentId: agentRetellId,
+                    invoice: {
+                        userId,
+                        status: {
+                            not: 'CANCELLED'
+                        },
                         id: {
                             not: action.invoiceId
                         }
-                    } : {}
+                    }
                 }
-            }
-        }) : false;
-        // Usage: only calls from max(assignedAt, periodStart) → periodEnd
-        const effectiveStart = ua.assignedAt > periodStart ? ua.assignedAt : periodStart;
-        const usageAgg = ua.customPrice ? await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].call.aggregate({
-            where: {
-                agentId: agentRetellId,
-                startTimestamp: {
-                    gte: effectiveStart,
-                    lte: periodEnd
+            }) : false;
+            // Monthly fee: already on a different non-cancelled invoice for this same period?
+            const monthlyFeeAlreadyBilled = ua.monthlyFee ? !!await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoiceLineItem.findFirst({
+                where: {
+                    type: 'MONTHLY_FEE',
+                    agentId: agentRetellId,
+                    invoice: {
+                        userId,
+                        periodStart,
+                        status: {
+                            not: 'CANCELLED'
+                        },
+                        id: {
+                            not: action.invoiceId
+                        }
+                    }
+                }
+            }) : false;
+            // For supplement invoices (DRAFT alongside a PAID invoice for this period),
+            // only count calls AFTER the most recent payment to avoid double-billing.
+            const baseStart = ua.assignedAt > periodStart ? ua.assignedAt : periodStart;
+            const effectiveStart = mostRecentPaidAt && mostRecentPaidAt > baseStart ? mostRecentPaidAt : baseStart;
+            const usageAgg = ua.costMultiplier ? await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].call.aggregate({
+                where: {
+                    agentId: agentRetellId,
+                    startTimestamp: {
+                        gte: effectiveStart,
+                        lte: periodEnd
+                    },
+                    totalCost: {
+                        not: null
+                    }
                 },
-                durationMs: {
-                    not: null
+                _sum: {
+                    totalCost: true
                 }
-            },
-            _sum: {
-                durationMs: true
-            }
-        }) : null;
-        return {
-            retellAgentId: agentRetellId,
-            agentName: ua.agent.name,
-            setupFee: ua.setupFee ? Number(ua.setupFee) : null,
-            setupFeeAlreadyBilled,
-            monthlyFee: ua.monthlyFee ? Number(ua.monthlyFee) : null,
-            customPrice: ua.customPrice ? Number(ua.customPrice) : null,
-            assignedAt: ua.assignedAt,
-            periodStart,
-            periodEnd,
-            usageMs: usageAgg?._sum.durationMs ?? 0
-        };
-    }));
-    const lineItems = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["buildLineItems"])(agentInputs);
-    if (lineItems.length === 0) return null;
-    const subtotal = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["computeSubtotal"])(lineItems);
-    // ── RECALCULATE existing DRAFT ──────────────────────────────────────────────
-    if (action.type === 'recalculate') {
+            }) : null;
+            return {
+                retellAgentId: agentRetellId,
+                agentName: ua.agent.name,
+                setupFee: ua.setupFee ? Number(ua.setupFee) : null,
+                setupFeeAlreadyBilled,
+                monthlyFee: ua.monthlyFee ? Number(ua.monthlyFee) : null,
+                monthlyFeeAlreadyBilled,
+                costMultiplier: ua.costMultiplier ? Number(ua.costMultiplier) : null,
+                assignedAt: ua.assignedAt,
+                periodStart,
+                periodEnd,
+                usageCost: Number(usageAgg?._sum.totalCost ?? 0)
+            };
+        }));
+        const lineItemsForRecalc = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["buildLineItems"])(agentInputsForRecalc);
         await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].$transaction(async (tx)=>{
-            // Delete ALL line items so newly-assigned agents' SETUP_FEE + MONTHLY_FEE
-            // are picked up, not just USAGE_FEE updates.
             await tx.invoiceLineItem.deleteMany({
                 where: {
                     invoiceId: action.invoiceId
                 }
             });
-            if (lineItems.length > 0) {
+            if (lineItemsForRecalc.length > 0) {
                 await tx.invoiceLineItem.createMany({
-                    data: lineItems.map((item)=>({
+                    data: lineItemsForRecalc.map((item)=>({
                             invoiceId: action.invoiceId,
                             type: item.type,
                             agentId: item.agentId,
@@ -327,7 +373,7 @@ async function ensureCurrentInvoice(userId) {
                         }))
                 });
             }
-            const newSubtotal = Math.round(lineItems.reduce((s, l)=>s + l.total, 0) * 100) / 100;
+            const newSubtotal = Math.round(lineItemsForRecalc.reduce((s, l)=>s + l.total, 0) * 100) / 100;
             await tx.invoice.update({
                 where: {
                     id: action.invoiceId
@@ -351,6 +397,98 @@ async function ensureCurrentInvoice(userId) {
             }
         });
     }
+    // 2. PENDING or OVERDUE → noop (payment in-flight or past-due)
+    const lockedInvoice = periodInvoices.find((inv)=>inv.status === 'PENDING' || inv.status === 'OVERDUE');
+    if (lockedInvoice) {
+        return __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoice.findUnique({
+            where: {
+                id: lockedInvoice.id
+            },
+            include: {
+                lineItems: {
+                    orderBy: {
+                        type: 'asc'
+                    }
+                }
+            }
+        });
+    }
+    // 3. All PAID (supplement) or no invoices → CREATE fresh DRAFT
+    // Fetch user's agent assignments
+    const userAgents = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].userAgent.findMany({
+        where: {
+            userId
+        },
+        include: {
+            agent: true
+        }
+    });
+    if (userAgents.length === 0) return null;
+    // Build agent inputs (resolve setup-fee billing status + usage)
+    const agentInputs = await Promise.all(userAgents.map(async (ua)=>{
+        const agentRetellId = ua.agent.retellAgentId;
+        // Setup fee already billed on any non-cancelled invoice?
+        const setupFeeAlreadyBilled = ua.setupFee ? !!await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoiceLineItem.findFirst({
+            where: {
+                type: 'SETUP_FEE',
+                agentId: agentRetellId,
+                invoice: {
+                    userId,
+                    status: {
+                        not: 'CANCELLED'
+                    }
+                }
+            }
+        }) : false;
+        // Monthly fee: already on any non-cancelled invoice for this same period?
+        const monthlyFeeAlreadyBilled = ua.monthlyFee ? !!await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoiceLineItem.findFirst({
+            where: {
+                type: 'MONTHLY_FEE',
+                agentId: agentRetellId,
+                invoice: {
+                    userId,
+                    periodStart,
+                    status: {
+                        not: 'CANCELLED'
+                    }
+                }
+            }
+        }) : false;
+        // Supplement invoice: only count calls AFTER the most recent payment to avoid double-billing.
+        const baseStart = ua.assignedAt > periodStart ? ua.assignedAt : periodStart;
+        const effectiveStart = mostRecentPaidAt && mostRecentPaidAt > baseStart ? mostRecentPaidAt : baseStart;
+        const usageAgg = ua.costMultiplier ? await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].call.aggregate({
+            where: {
+                agentId: agentRetellId,
+                startTimestamp: {
+                    gte: effectiveStart,
+                    lte: periodEnd
+                },
+                totalCost: {
+                    not: null
+                }
+            },
+            _sum: {
+                totalCost: true
+            }
+        }) : null;
+        return {
+            retellAgentId: agentRetellId,
+            agentName: ua.agent.name,
+            setupFee: ua.setupFee ? Number(ua.setupFee) : null,
+            setupFeeAlreadyBilled,
+            monthlyFee: ua.monthlyFee ? Number(ua.monthlyFee) : null,
+            monthlyFeeAlreadyBilled,
+            costMultiplier: ua.costMultiplier ? Number(ua.costMultiplier) : null,
+            assignedAt: ua.assignedAt,
+            periodStart,
+            periodEnd,
+            usageCost: Number(usageAgg?._sum.totalCost ?? 0)
+        };
+    }));
+    const lineItems = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["buildLineItems"])(agentInputs);
+    if (lineItems.length === 0) return null;
+    const subtotal = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$engine$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["computeSubtotal"])(lineItems);
     // ── CREATE fresh invoice ────────────────────────────────────────────────────
     const takenNumbers = new Set((await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["prisma"].invoice.findMany({
         where: {
@@ -402,6 +540,10 @@ async function ensureCurrentInvoice(userId) {
             }
         }
     });
+}
+async function ensureBillingUpToDate(userId) {
+    await ensureCurrentInvoice(userId);
+    await autoMarkOverdueForUser(userId);
 }
 if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
     __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
@@ -536,7 +678,7 @@ var _s = __turbopack_context__.k.signature(), _s1 = __turbopack_context__.k.sign
 ;
 ;
 ;
-// ── Domain constants ───────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────────
 const PAYABLE_STATUSES = new Set([
     'DRAFT',
     'PENDING',
@@ -553,18 +695,20 @@ const LINE_ITEM_LABEL = {
     MONTHLY_FEE: 'Monthly Service Fee',
     USAGE_FEE: 'Usage Fee'
 };
-function formatPeriod(start) {
-    const d = new Date(start);
-    return d.toLocaleString('default', {
-        month: 'long',
-        year: 'numeric'
-    });
+function formatPeriodRange(start, end) {
+    const s = new Date(start);
+    const e = new Date(end);
+    const opts = {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC'
+    };
+    return `${s.toLocaleDateString('en-US', opts)} – ${e.toLocaleDateString('en-US', opts)}`;
 }
-// ── Invoice Card ───────────────────────────────────────────────────────────────
-function InvoiceCard({ invoice }) {
+function InvoiceCard({ invoice, canPay, onPay, isPaying, blockMessage }) {
     _s();
     const [open, setOpen] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
-    const isPayable = PAYABLE_STATUSES.has(invoice.status);
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: "bg-white rounded-xl border border-gray-200 overflow-hidden",
         children: [
@@ -580,12 +724,12 @@ function InvoiceCard({ invoice }) {
                                     className: "w-4 h-4 text-[#004D3E]"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                    lineNumber: 97,
+                                    lineNumber: 104,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 96,
+                                lineNumber: 103,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -599,7 +743,7 @@ function InvoiceCard({ invoice }) {
                                                 children: invoice.invoiceNumber
                                             }, void 0, false, {
                                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                lineNumber: 101,
+                                                lineNumber: 108,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$badge$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Badge"], {
@@ -607,36 +751,36 @@ function InvoiceCard({ invoice }) {
                                                 children: invoice.status
                                             }, void 0, false, {
                                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                lineNumber: 104,
+                                                lineNumber: 111,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 100,
+                                        lineNumber: 107,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                         className: "text-xs text-gray-400 mt-0.5",
                                         children: [
-                                            formatPeriod(invoice.periodStart),
+                                            formatPeriodRange(invoice.periodStart, invoice.periodEnd),
                                             invoice.paidAt && ` · Paid ${(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatDate"])(invoice.paidAt)}`
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 108,
+                                        lineNumber: 115,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 99,
+                                lineNumber: 106,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 95,
+                        lineNumber: 102,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -650,7 +794,7 @@ function InvoiceCard({ invoice }) {
                                         children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(invoice.total)
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 117,
+                                        lineNumber: 124,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -658,32 +802,64 @@ function InvoiceCard({ invoice }) {
                                         children: "total due"
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 118,
+                                        lineNumber: 125,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 116,
+                                lineNumber: 123,
                                 columnNumber: 11
                             }, this),
-                            isPayable && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Button"], {
-                                size: "sm",
-                                className: "gap-1.5",
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex flex-col items-end gap-1",
                                 children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$credit$2d$card$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__CreditCard$3e$__["CreditCard"], {
-                                        className: "w-3.5 h-3.5"
+                                    PAYABLE_STATUSES.has(invoice.status) && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Button"], {
+                                        size: "sm",
+                                        className: "gap-1.5",
+                                        disabled: !canPay || isPaying,
+                                        onClick: onPay,
+                                        children: isPaying ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$loader$2d$circle$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Loader2$3e$__["Loader2"], {
+                                                    className: "w-3.5 h-3.5 animate-spin"
+                                                }, void 0, false, {
+                                                    fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                                    lineNumber: 137,
+                                                    columnNumber: 21
+                                                }, this),
+                                                " Processing…"
+                                            ]
+                                        }, void 0, true) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$credit$2d$card$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__CreditCard$3e$__["CreditCard"], {
+                                                    className: "w-3.5 h-3.5"
+                                                }, void 0, false, {
+                                                    fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                                    lineNumber: 139,
+                                                    columnNumber: 21
+                                                }, this),
+                                                " Pay Now"
+                                            ]
+                                        }, void 0, true)
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 123,
+                                        lineNumber: 130,
                                         columnNumber: 15
                                     }, this),
-                                    "Pay Now"
+                                    blockMessage && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                        className: "text-xs text-amber-600 mt-1",
+                                        children: blockMessage
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                        lineNumber: 144,
+                                        columnNumber: 15
+                                    }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 122,
-                                columnNumber: 13
+                                lineNumber: 128,
+                                columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                                 onClick: ()=>setOpen((v)=>!v),
@@ -693,230 +869,237 @@ function InvoiceCard({ invoice }) {
                                     className: "w-4 h-4"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                    lineNumber: 133,
+                                    lineNumber: 153,
                                     columnNumber: 21
                                 }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$chevron$2d$down$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ChevronDown$3e$__["ChevronDown"], {
                                     className: "w-4 h-4"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                    lineNumber: 133,
+                                    lineNumber: 153,
                                     columnNumber: 57
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 128,
+                                lineNumber: 148,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 115,
+                        lineNumber: 122,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                lineNumber: 94,
+                lineNumber: 101,
                 columnNumber: 7
             }, this),
             open && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "border-t border-gray-100",
-                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("table", {
-                    className: "w-full text-sm",
-                    children: [
-                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("thead", {
-                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
-                                className: "bg-gray-50 border-b border-gray-100",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
-                                        className: "text-left px-5 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide",
-                                        children: "Description"
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 144,
-                                        columnNumber: 17
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
-                                        className: "text-right px-5 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide",
-                                        children: "Qty"
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 145,
-                                        columnNumber: 17
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
-                                        className: "text-right px-5 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide",
-                                        children: "Unit Price"
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 146,
-                                        columnNumber: 17
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
-                                        className: "text-right px-5 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide",
-                                        children: "Total"
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 147,
-                                        columnNumber: 17
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 143,
-                                columnNumber: 15
-                            }, this)
-                        }, void 0, false, {
-                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                            lineNumber: 142,
-                            columnNumber: 13
-                        }, this),
-                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tbody", {
-                            className: "divide-y divide-gray-50",
-                            children: invoice.lineItems.map((li)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
-                                    className: "hover:bg-gray-50/50",
+                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                    className: "overflow-x-auto",
+                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("table", {
+                        className: "w-full text-sm",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("thead", {
+                                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
+                                    className: "bg-gray-50 border-b border-gray-100",
                                     children: [
-                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
-                                            className: "px-5 py-3",
-                                            children: [
-                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                                    className: "font-medium text-gray-800",
-                                                    children: LINE_ITEM_LABEL[li.type] ?? li.type
-                                                }, void 0, false, {
-                                                    fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 154,
-                                                    columnNumber: 21
-                                                }, this),
-                                                li.agentName && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                                    className: "text-xs text-gray-400 mt-0.5",
-                                                    children: li.agentName
-                                                }, void 0, false, {
-                                                    fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 155,
-                                                    columnNumber: 38
-                                                }, this)
-                                            ]
-                                        }, void 0, true, {
-                                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 153,
-                                            columnNumber: 19
-                                        }, this),
-                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
-                                            className: "px-5 py-3 text-right text-gray-600 tabular-nums",
-                                            children: li.type === 'USAGE_FEE' ? `${li.quantity.toFixed(4)} min` : li.quantity
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
+                                            className: "text-left px-5 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide",
+                                            children: "Description"
                                         }, void 0, false, {
                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 157,
-                                            columnNumber: 19
+                                            lineNumber: 164,
+                                            columnNumber: 17
                                         }, this),
-                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
-                                            className: "px-5 py-3 text-right text-gray-600 tabular-nums",
-                                            children: li.type === 'USAGE_FEE' ? `${(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatCost"])(li.unitPrice)}/min` : (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(li.unitPrice)
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
+                                            className: "text-right px-5 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide",
+                                            children: "Qty"
                                         }, void 0, false, {
                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 160,
-                                            columnNumber: 19
+                                            lineNumber: 165,
+                                            columnNumber: 17
                                         }, this),
-                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
-                                            className: "px-5 py-3 text-right font-semibold text-gray-900 tabular-nums",
-                                            children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(li.total)
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
+                                            className: "text-right px-5 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide",
+                                            children: "Unit Price"
                                         }, void 0, false, {
                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 163,
-                                            columnNumber: 19
+                                            lineNumber: 166,
+                                            columnNumber: 17
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
+                                            className: "text-right px-5 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide",
+                                            children: "Total"
+                                        }, void 0, false, {
+                                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                            lineNumber: 167,
+                                            columnNumber: 17
                                         }, this)
                                     ]
-                                }, li.id, true, {
+                                }, void 0, true, {
                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                    lineNumber: 152,
-                                    columnNumber: 17
-                                }, this))
-                        }, void 0, false, {
-                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                            lineNumber: 150,
-                            columnNumber: 13
-                        }, this),
-                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tfoot", {
-                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
-                                className: "border-t border-gray-200 bg-gray-50",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
-                                        colSpan: 3,
-                                        className: "px-5 py-3 text-sm font-semibold text-gray-700 text-right",
-                                        children: "Total"
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 171,
-                                        columnNumber: 17
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
-                                        className: "px-5 py-3 text-right text-base font-bold text-gray-900 tabular-nums",
-                                        children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(invoice.total)
-                                    }, void 0, false, {
+                                    lineNumber: 163,
+                                    columnNumber: 15
+                                }, this)
+                            }, void 0, false, {
+                                fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                lineNumber: 162,
+                                columnNumber: 13
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tbody", {
+                                className: "divide-y divide-gray-50",
+                                children: invoice.lineItems.map((li)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
+                                        className: "hover:bg-gray-50/50",
+                                        children: [
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                                className: "px-5 py-3",
+                                                children: [
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                                        className: "font-medium text-gray-800",
+                                                        children: LINE_ITEM_LABEL[li.type] ?? li.type
+                                                    }, void 0, false, {
+                                                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                                        lineNumber: 174,
+                                                        columnNumber: 21
+                                                    }, this),
+                                                    li.agentName && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                                        className: "text-xs text-gray-400 mt-0.5",
+                                                        children: li.agentName
+                                                    }, void 0, false, {
+                                                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                                        lineNumber: 175,
+                                                        columnNumber: 38
+                                                    }, this)
+                                                ]
+                                            }, void 0, true, {
+                                                fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                                lineNumber: 173,
+                                                columnNumber: 19
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                                className: "px-5 py-3 text-right text-gray-600 tabular-nums",
+                                                children: li.type === 'USAGE_FEE' ? '—' : li.quantity
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                                lineNumber: 177,
+                                                columnNumber: 19
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                                className: "px-5 py-3 text-right text-gray-600 tabular-nums",
+                                                children: li.type === 'USAGE_FEE' ? '—' : (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(li.unitPrice)
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                                lineNumber: 180,
+                                                columnNumber: 19
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                                className: "px-5 py-3 text-right font-semibold text-gray-900 tabular-nums",
+                                                children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(li.total)
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                                lineNumber: 183,
+                                                columnNumber: 19
+                                            }, this)
+                                        ]
+                                    }, li.id, true, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
                                         lineNumber: 172,
                                         columnNumber: 17
-                                    }, this)
-                                ]
-                            }, void 0, true, {
+                                    }, this))
+                            }, void 0, false, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
                                 lineNumber: 170,
-                                columnNumber: 15
+                                columnNumber: 13
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tfoot", {
+                                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
+                                    className: "border-t border-gray-200 bg-gray-50",
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                            colSpan: 3,
+                                            className: "px-5 py-3 text-sm font-semibold text-gray-700 text-right",
+                                            children: "Total"
+                                        }, void 0, false, {
+                                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                            lineNumber: 191,
+                                            columnNumber: 17
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                            className: "px-5 py-3 text-right text-base font-bold text-gray-900 tabular-nums",
+                                            children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(invoice.total)
+                                        }, void 0, false, {
+                                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                            lineNumber: 192,
+                                            columnNumber: 17
+                                        }, this)
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                    lineNumber: 190,
+                                    columnNumber: 15
+                                }, this)
+                            }, void 0, false, {
+                                fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                                lineNumber: 189,
+                                columnNumber: 13
                             }, this)
-                        }, void 0, false, {
-                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                            lineNumber: 169,
-                            columnNumber: 13
-                        }, this)
-                    ]
-                }, void 0, true, {
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                        lineNumber: 161,
+                        columnNumber: 11
+                    }, this)
+                }, void 0, false, {
                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                    lineNumber: 141,
+                    lineNumber: 160,
                     columnNumber: 11
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                lineNumber: 140,
+                lineNumber: 159,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-        lineNumber: 92,
+        lineNumber: 100,
         columnNumber: 5
     }, this);
 }
 _s(InvoiceCard, "xG1TONbKtDWtdOTrXaTAsNhPg/Q=");
 _c = InvoiceCard;
-function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, outstandingSetup, activeCount }) {
+function BillingPageClient({ agents, currentInvoices, totalMonthly, outstandingSetup, activeCount }) {
     _s1();
-    const router = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"])();
-    const [isPending, startTransition] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useTransition"])();
-    const [isGenerating, setIsGenerating] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
-    const [generateError, setGenerateError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
-    const totalOutstanding = invoices.filter((inv)=>PAYABLE_STATUSES.has(inv.status)).reduce((s, inv)=>s + inv.total, 0);
-    // Use date-range check to avoid UTC/local-time mismatch on string prefix.
-    const now = new Date();
-    const currentInvoice = invoices.find((inv)=>new Date(inv.periodStart) <= now && now <= new Date(inv.periodEnd)) ?? null;
-    const pastInvoices = invoices.filter((inv)=>inv !== currentInvoice);
-    const btnState = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$service$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["resolveGetBillButton"])(currentInvoice?.status ?? null);
-    const handleGetBill = async ()=>{
-        setIsGenerating(true);
-        setGenerateError(null);
+    const searchParams = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useSearchParams"])();
+    const [payingInvoiceId, setPayingInvoiceId] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [payError, setPayError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const paymentStatus = searchParams.get('payment');
+    // Prefer DRAFT invoice for the "active" view; fall back to first (PENDING/OVERDUE/PAID)
+    const activeInvoice = currentInvoices.find((inv)=>inv.status === 'DRAFT') ?? currentInvoices.find((inv)=>inv.status === 'PENDING' || inv.status === 'OVERDUE') ?? currentInvoices[0] ?? null;
+    // Previously-paid invoices for the same month (shown below active invoice)
+    const paidThisMonth = currentInvoices.filter((inv)=>inv !== activeInvoice && inv.status === 'PAID');
+    const overdueBlocker = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$service$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getOldestOverdueInvoice"])(currentInvoices);
+    const totalOutstanding = currentInvoices.filter((inv)=>PAYABLE_STATUSES.has(inv.status)).reduce((s, inv)=>s + inv.total, 0);
+    const handlePay = async (invoiceId)=>{
+        setPayingInvoiceId(invoiceId);
+        setPayError(null);
         try {
-            const res = await fetch('/api/billing/invoice/generate', {
+            const res = await fetch(`/api/billing/invoices/${invoiceId}/pay`, {
                 method: 'POST'
             });
+            const data = await res.json();
             if (!res.ok) {
-                const data = await res.json();
-                setGenerateError(data.error ?? 'Failed to generate invoice.');
+                setPayError(data.error ?? 'Payment failed.');
                 return;
             }
-            startTransition(()=>router.refresh());
+            window.location.href = data.checkoutUrl;
         } catch  {
-            setGenerateError('Network error. Please try again.');
+            setPayError('Network error. Please try again.');
         } finally{
-            setIsGenerating(false);
+            setPayingInvoiceId(null);
         }
     };
     if (agents.length === 0) {
@@ -927,7 +1110,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                     className: "w-10 h-10 text-gray-300 mx-auto mb-3"
                 }, void 0, false, {
                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                    lineNumber: 235,
+                    lineNumber: 254,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -935,13 +1118,13 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                     children: "No agents assigned yet. Contact your admin."
                 }, void 0, false, {
                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                    lineNumber: 236,
+                    lineNumber: 255,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-            lineNumber: 234,
+            lineNumber: 253,
             columnNumber: 7
         }, this);
     }
@@ -960,12 +1143,12 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                     className: "w-5 h-5 text-[#004D3E]"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                    lineNumber: 249,
+                                    lineNumber: 267,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 248,
+                                lineNumber: 266,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -975,7 +1158,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                         children: "Monthly Fees"
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 252,
+                                        lineNumber: 270,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -983,7 +1166,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                         children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(totalMonthly)
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 253,
+                                        lineNumber: 271,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -991,19 +1174,19 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                         children: "recurring / month"
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 254,
+                                        lineNumber: 272,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 251,
+                                lineNumber: 269,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 247,
+                        lineNumber: 265,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1015,22 +1198,22 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                     className: `w-5 h-5 ${totalOutstanding > 0 ? 'text-red-500' : 'text-green-500'}`
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                    lineNumber: 262,
+                                    lineNumber: 280,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 259,
+                                lineNumber: 277,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 children: [
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                         className: "text-xs text-gray-500 font-medium uppercase tracking-wide",
-                                        children: "Outstanding Balance"
+                                        children: "Outstanding"
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 265,
+                                        lineNumber: 283,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1038,27 +1221,27 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                         children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(totalOutstanding)
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 266,
+                                        lineNumber: 284,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                         className: "text-xs text-gray-400",
-                                        children: "across all invoices"
+                                        children: "this month"
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 269,
+                                        lineNumber: 287,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 264,
+                                lineNumber: 282,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 258,
+                        lineNumber: 276,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1070,12 +1253,12 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                     className: "w-5 h-5 text-[#004D3E]"
                                 }, void 0, false, {
                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                    lineNumber: 275,
+                                    lineNumber: 293,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 274,
+                                lineNumber: 292,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1085,7 +1268,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                         children: "Active Agents"
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 278,
+                                        lineNumber: 296,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1093,7 +1276,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                         children: activeCount
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 279,
+                                        lineNumber: 297,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1105,113 +1288,137 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 280,
+                                        lineNumber: 298,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 277,
+                                lineNumber: 295,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 273,
+                        lineNumber: 291,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                lineNumber: 245,
+                lineNumber: 264,
                 columnNumber: 7
+            }, this),
+            paymentStatus === 'success' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-2 text-green-800",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$circle$2d$check$2d$big$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__CheckCircle$3e$__["CheckCircle"], {
+                        className: "w-4 h-4 flex-shrink-0"
+                    }, void 0, false, {
+                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                        lineNumber: 306,
+                        columnNumber: 11
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                        className: "text-sm font-medium",
+                        children: "Payment successful! Your invoice has been marked as paid."
+                    }, void 0, false, {
+                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                        lineNumber: 307,
+                        columnNumber: 11
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                lineNumber: 305,
+                columnNumber: 9
+            }, this),
+            paymentStatus === 'cancelled' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2 text-amber-800",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$clock$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Clock$3e$__["Clock"], {
+                        className: "w-4 h-4 flex-shrink-0"
+                    }, void 0, false, {
+                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                        lineNumber: 312,
+                        columnNumber: 11
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                        className: "text-sm font-medium",
+                        children: "Payment was cancelled. Your invoice is still outstanding."
+                    }, void 0, false, {
+                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                        lineNumber: 313,
+                        columnNumber: 11
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                lineNumber: 311,
+                columnNumber: 9
+            }, this),
+            payError && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                className: "text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg",
+                children: payError
+            }, void 0, false, {
+                fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                lineNumber: 317,
+                columnNumber: 9
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "space-y-3",
                 children: [
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "flex items-center justify-between",
-                        children: [
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
-                                className: "text-base font-semibold text-gray-900",
-                                children: "This Month's Invoice"
-                            }, void 0, false, {
-                                fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 289,
-                                columnNumber: 11
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$button$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Button"], {
-                                size: "sm",
-                                onClick: handleGetBill,
-                                disabled: btnState.disabled || isGenerating || isPending,
-                                children: isGenerating || isPending ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
-                                    children: [
-                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$loader$2d$circle$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Loader2$3e$__["Loader2"], {
-                                            className: "w-3.5 h-3.5 animate-spin"
-                                        }, void 0, false, {
-                                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 296,
-                                            columnNumber: 17
-                                        }, this),
-                                        " Generating…"
-                                    ]
-                                }, void 0, true) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
-                                    children: [
-                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$receipt$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Receipt$3e$__["Receipt"], {
-                                            className: "w-3.5 h-3.5"
-                                        }, void 0, false, {
-                                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 298,
-                                            columnNumber: 17
-                                        }, this),
-                                        " ",
-                                        btnState.label
-                                    ]
-                                }, void 0, true)
-                            }, void 0, false, {
-                                fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 290,
-                                columnNumber: 11
-                            }, this)
-                        ]
-                    }, void 0, true, {
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
+                        className: "text-base font-semibold text-gray-900",
+                        children: "This Month's Invoice"
+                    }, void 0, false, {
                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 288,
+                        lineNumber: 322,
                         columnNumber: 9
                     }, this),
-                    generateError && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                        className: "text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg",
-                        children: generateError
-                    }, void 0, false, {
-                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 304,
-                        columnNumber: 11
-                    }, this),
-                    currentInvoice ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(InvoiceCard, {
-                        invoice: currentInvoice
-                    }, void 0, false, {
-                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 308,
-                        columnNumber: 11
-                    }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                    activeInvoice ? (()=>{
+                        const { canPay, blockMessage } = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$billing$2d$service$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["resolveInvoicePayability"])(activeInvoice, overdueBlocker);
+                        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(InvoiceCard, {
+                            invoice: activeInvoice,
+                            canPay: canPay,
+                            onPay: ()=>handlePay(activeInvoice.id),
+                            isPaying: payingInvoiceId === activeInvoice.id,
+                            blockMessage: blockMessage
+                        }, void 0, false, {
+                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                            lineNumber: 327,
+                            columnNumber: 13
+                        }, this);
+                    })() : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center",
                         children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                             className: "text-sm text-gray-400",
-                            children: 'No invoice generated yet. Click "Get Bill" above.'
+                            children: "No invoice generated yet. Please check back shortly or contact your admin."
                         }, void 0, false, {
                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                            lineNumber: 311,
+                            lineNumber: 337,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 310,
+                        lineNumber: 336,
                         columnNumber: 11
-                    }, this)
+                    }, this),
+                    paidThisMonth.map((inv)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(InvoiceCard, {
+                            invoice: inv,
+                            canPay: false,
+                            onPay: ()=>{},
+                            isPaying: false,
+                            blockMessage: null
+                        }, inv.id, false, {
+                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
+                            lineNumber: 343,
+                            columnNumber: 11
+                        }, this))
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                lineNumber: 287,
+                lineNumber: 321,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1224,7 +1431,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                 children: "Agent Cost Breakdown"
                             }, void 0, false, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 319,
+                                lineNumber: 357,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1232,13 +1439,13 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                 children: "Live estimate for the current billing period"
                             }, void 0, false, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 320,
+                                lineNumber: 358,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 318,
+                        lineNumber: 356,
                         columnNumber: 9
                     }, this),
                     agents.map((agent)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1257,7 +1464,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                             children: agent.name
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 329,
+                                                            lineNumber: 366,
                                                             columnNumber: 19
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ui$2f$badge$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Badge"], {
@@ -1265,13 +1472,13 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                             children: agent.isActive ? 'Active' : 'Inactive'
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 330,
+                                                            lineNumber: 367,
                                                             columnNumber: 19
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 328,
+                                                    lineNumber: 365,
                                                     columnNumber: 17
                                                 }, this),
                                                 agent.phoneNumber && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1279,13 +1486,13 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                     children: agent.phoneNumber
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 335,
+                                                    lineNumber: 372,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 327,
+                                            lineNumber: 364,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1295,7 +1502,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                     className: "w-3.5 h-3.5"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 339,
+                                                    lineNumber: 376,
                                                     columnNumber: 17
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1305,19 +1512,19 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 340,
+                                                    lineNumber: 377,
                                                     columnNumber: 17
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 338,
+                                            lineNumber: 375,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                    lineNumber: 326,
+                                    lineNumber: 363,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1333,7 +1540,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                             children: "Setup Fee"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 349,
+                                                            lineNumber: 385,
                                                             columnNumber: 21
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1341,13 +1548,13 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                             children: "One-time charge"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 350,
+                                                            lineNumber: 386,
                                                             columnNumber: 21
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 348,
+                                                    lineNumber: 384,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1358,7 +1565,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                             children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(agent.setupFee)
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 353,
+                                                            lineNumber: 389,
                                                             columnNumber: 21
                                                         }, this),
                                                         agent.setupFeePaid ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1368,14 +1575,14 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                                     className: "w-3 h-3"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                                    lineNumber: 356,
+                                                                    lineNumber: 392,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 " Paid"
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 355,
+                                                            lineNumber: 391,
                                                             columnNumber: 23
                                                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                                             className: "inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full",
@@ -1384,26 +1591,26 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                                     className: "w-3 h-3"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                                    lineNumber: 360,
+                                                                    lineNumber: 396,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 " Unpaid"
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 359,
+                                                            lineNumber: 395,
                                                             columnNumber: 23
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 352,
+                                                    lineNumber: 388,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 347,
+                                            lineNumber: 383,
                                             columnNumber: 17
                                         }, this),
                                         agent.monthlyFee != null && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1416,7 +1623,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                             children: "Monthly Service Fee"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 370,
+                                                            lineNumber: 406,
                                                             columnNumber: 21
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1424,13 +1631,13 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                             children: "Recurring monthly charge"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 371,
+                                                            lineNumber: 407,
                                                             columnNumber: 21
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 369,
+                                                    lineNumber: 405,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1441,7 +1648,7 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                             children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(agent.monthlyFee)
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 374,
+                                                            lineNumber: 410,
                                                             columnNumber: 21
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1449,19 +1656,19 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                             children: "/ month"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 375,
+                                                            lineNumber: 411,
                                                             columnNumber: 21
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 373,
+                                                    lineNumber: 409,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 368,
+                                            lineNumber: 404,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1474,28 +1681,21 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                             children: "Usage This Month"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 382,
+                                                            lineNumber: 418,
                                                             columnNumber: 19
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                                             className: "text-xs text-gray-400 mt-0.5",
-                                                            children: agent.customPrice != null ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
-                                                                children: [
-                                                                    agent.usageMinutes.toFixed(4),
-                                                                    " min × ",
-                                                                    (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatCost"])(agent.customPrice),
-                                                                    "/min"
-                                                                ]
-                                                            }, void 0, true) : 'No usage rate configured'
+                                                            children: agent.costMultiplier != null ? 'Usage charged this period' : 'No multiplier configured'
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 383,
+                                                            lineNumber: 419,
                                                             columnNumber: 19
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 381,
+                                                    lineNumber: 417,
                                                     columnNumber: 17
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1503,36 +1703,36 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                                     children: [
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                                             className: "text-sm font-semibold text-gray-900",
-                                                            children: agent.customPrice != null ? (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(agent.usageCost) : '—'
+                                                            children: agent.costMultiplier != null ? (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(agent.usageCost) : '—'
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 390,
+                                                            lineNumber: 424,
                                                             columnNumber: 19
                                                         }, this),
-                                                        agent.customPrice != null && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                                        agent.costMultiplier != null && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                                             className: "text-xs text-gray-400 mt-0.5",
                                                             children: "this month"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                            lineNumber: 394,
+                                                            lineNumber: 428,
                                                             columnNumber: 21
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                                    lineNumber: 389,
+                                                    lineNumber: 423,
                                                     columnNumber: 17
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 380,
+                                            lineNumber: 416,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                    lineNumber: 345,
+                                    lineNumber: 381,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1543,27 +1743,27 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                             children: "Agent Total (est.)"
                                         }, void 0, false, {
                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 402,
+                                            lineNumber: 435,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                             className: "text-sm font-bold text-gray-900",
-                                            children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])((agent.setupFeePaid ? 0 : agent.setupFee ?? 0) + (agent.monthlyFee ?? 0) + (agent.customPrice != null ? agent.usageCost : 0))
+                                            children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])((agent.setupFeePaid ? 0 : agent.setupFee ?? 0) + (agent.monthlyFee ?? 0) + (agent.costMultiplier != null ? agent.usageCost : 0))
                                         }, void 0, false, {
                                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                            lineNumber: 403,
+                                            lineNumber: 436,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                    lineNumber: 401,
+                                    lineNumber: 434,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, agent.retellAgentId, true, {
                             fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                            lineNumber: 324,
+                            lineNumber: 362,
                             columnNumber: 11
                         }, this)),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1576,78 +1776,53 @@ function BillingPageClient({ agents, invoices, hasCurrentInvoice, totalMonthly, 
                                         children: "Estimated Total This Month"
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 417,
+                                        lineNumber: 450,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                         className: "text-xs text-white/60 mt-0.5",
-                                        children: !currentInvoice ? 'Click "Get Bill" above to generate your invoice' : currentInvoice.status === 'DRAFT' ? 'Click "Update Bill" above to include any new usage' : 'See your invoice above for the exact amount'
+                                        children: !activeInvoice ? 'Invoice will be generated automatically on your next visit' : activeInvoice.status === 'DRAFT' ? 'Invoice auto-updates on each page load' : activeInvoice.status === 'PAID' ? 'Invoice paid — any remaining calls will be billed next visit' : 'See your invoice above for the exact amount'
                                     }, void 0, false, {
                                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                        lineNumber: 418,
+                                        lineNumber: 451,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 416,
+                                lineNumber: 449,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                 className: "text-2xl font-bold",
-                                children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(outstandingSetup + totalMonthly + agents.reduce((s, a)=>s + (a.customPrice != null ? a.usageCost : 0), 0))
+                                children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["formatMoney"])(outstandingSetup + totalMonthly + agents.reduce((s, a)=>s + (a.costMultiplier != null ? a.usageCost : 0), 0))
                             }, void 0, false, {
                                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                                lineNumber: 426,
+                                lineNumber: 461,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 415,
+                        lineNumber: 448,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                lineNumber: 317,
+                lineNumber: 355,
                 columnNumber: 7
-            }, this),
-            pastInvoices.length > 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                className: "space-y-3",
-                children: [
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
-                        className: "text-base font-semibold text-gray-900",
-                        children: "Invoice History"
-                    }, void 0, false, {
-                        fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                        lineNumber: 439,
-                        columnNumber: 11
-                    }, this),
-                    pastInvoices.map((inv)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(InvoiceCard, {
-                            invoice: inv
-                        }, inv.id, false, {
-                            fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                            lineNumber: 441,
-                            columnNumber: 13
-                        }, this))
-                ]
-            }, void 0, true, {
-                fileName: "[project]/components/dashboard/billing-page-client.tsx",
-                lineNumber: 438,
-                columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/dashboard/billing-page-client.tsx",
-        lineNumber: 242,
+        lineNumber: 261,
         columnNumber: 5
     }, this);
 }
-_s1(BillingPageClient, "mNZgfSOAKag1O6fkByHP+yUIKjw=", false, function() {
+_s1(BillingPageClient, "jtEdIyXm2BENH6vzJOYueA/4PZM=", false, function() {
     return [
-        __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"],
-        __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useTransition"]
+        __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useSearchParams"]
     ];
 });
 _c1 = BillingPageClient;

@@ -113,6 +113,7 @@ export function ContactsTable({ initialContacts, initialTotal, initialPage }: Co
             )}
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -168,6 +169,7 @@ export function ContactsTable({ initialContacts, initialTotal, initialPage }: Co
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

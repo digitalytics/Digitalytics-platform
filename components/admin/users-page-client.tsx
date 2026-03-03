@@ -18,10 +18,10 @@ interface User {
   agents: Array<{
     name: string;
     retellAgentId: string;
-    customPrice:  number | null;
-    setupFee:     number | null;
-    monthlyFee:   number | null;
-    setupFeePaid: boolean;
+    costMultiplier: number | null;
+    setupFee:       number | null;
+    monthlyFee:     number | null;
+    setupFeePaid:   boolean;
   }>;
 }
 
@@ -54,7 +54,7 @@ export function UsersPageClient({
   const [activeTab, setActiveTab] = useState<Tab>((initialTab as Tab) || 'all');
   const [assignModal, setAssignModal] = useState<User | null>(null);
   const [selectedAgents, setSelectedAgents] = useState<Record<string, boolean>>({});
-  const [customPrices,   setCustomPrices]   = useState<Record<string, string>>({});
+  const [costMultipliers, setCostMultipliers] = useState<Record<string, string>>({});
   const [setupFees,      setSetupFees]      = useState<Record<string, string>>({});
   const [monthlyFees,    setMonthlyFees]    = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -65,19 +65,19 @@ export function UsersPageClient({
   });
 
   const openAssignModal = (user: User) => {
-    const sel:      Record<string, boolean> = {};
-    const prices:   Record<string, string>  = {};
-    const setup:    Record<string, string>  = {};
-    const monthly:  Record<string, string>  = {};
+    const sel:         Record<string, boolean> = {};
+    const multipliers: Record<string, string>  = {};
+    const setup:       Record<string, string>  = {};
+    const monthly:     Record<string, string>  = {};
     agents.forEach(a => {
       const assigned = user.agents.find(ua => ua.retellAgentId === a.retellAgentId);
       sel[a.retellAgentId] = !!assigned;
-      if (assigned?.customPrice) prices[a.retellAgentId]  = String(assigned.customPrice);
-      if (assigned?.setupFee)    setup[a.retellAgentId]   = String(assigned.setupFee);
-      if (assigned?.monthlyFee)  monthly[a.retellAgentId] = String(assigned.monthlyFee);
+      if (assigned?.costMultiplier) multipliers[a.retellAgentId] = String(assigned.costMultiplier);
+      if (assigned?.setupFee)       setup[a.retellAgentId]       = String(assigned.setupFee);
+      if (assigned?.monthlyFee)     monthly[a.retellAgentId]     = String(assigned.monthlyFee);
     });
     setSelectedAgents(sel);
-    setCustomPrices(prices);
+    setCostMultipliers(multipliers);
     setSetupFees(setup);
     setMonthlyFees(monthly);
     setAssignModal(user);
@@ -98,10 +98,10 @@ export function UsersPageClient({
     const agentsList = agents
       .filter(a => selectedAgents[a.retellAgentId])
       .map(a => ({
-        agentId:     a.retellAgentId,
-        customPrice: customPrices[a.retellAgentId] ? parseFloat(customPrices[a.retellAgentId]) : undefined,
-        setupFee:    setupFees[a.retellAgentId]    ? parseFloat(setupFees[a.retellAgentId])    : undefined,
-        monthlyFee:  monthlyFees[a.retellAgentId]  ? parseFloat(monthlyFees[a.retellAgentId])  : undefined,
+        agentId:        a.retellAgentId,
+        costMultiplier: costMultipliers[a.retellAgentId] ? parseFloat(costMultipliers[a.retellAgentId]) : undefined,
+        setupFee:       setupFees[a.retellAgentId]       ? parseFloat(setupFees[a.retellAgentId])       : undefined,
+        monthlyFee:     monthlyFees[a.retellAgentId]     ? parseFloat(monthlyFees[a.retellAgentId])     : undefined,
       }));
 
     await fetch(`/api/admin/users/${assignModal.id}`, {
@@ -153,6 +153,7 @@ export function UsersPageClient({
         {filtered.length === 0 ? (
           <div className="p-12 text-center text-gray-400">No users found.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -160,7 +161,7 @@ export function UsersPageClient({
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Agents</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Joined</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Assignments & Payments</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -243,7 +244,7 @@ export function UsersPageClient({
                         onClick={() => openAssignModal(user)}
                       >
                         <Edit size={13} />
-                        Agents
+                        Set Pricing
                       </Button>
                     </div>
                   </td>
@@ -251,6 +252,7 @@ export function UsersPageClient({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -312,19 +314,17 @@ export function UsersPageClient({
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs text-gray-500 block mb-1">Per-min Rate</label>
-                      <div className="flex items-center gap-1">
-                        <span className="text-gray-400 text-sm">$</span>
-                        <input
-                          type="number"
-                          step="0.001"
-                          min="0"
-                          placeholder="0.000"
-                          value={customPrices[agent.retellAgentId] || ''}
-                          onChange={e => setCustomPrices(prev => ({ ...prev, [agent.retellAgentId]: e.target.value }))}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
-                        />
-                      </div>
+                      <label className="text-xs text-gray-500 block mb-1">Cost Multiplier</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="1.0"
+                        value={costMultipliers[agent.retellAgentId] || ''}
+                        onChange={e => setCostMultipliers(prev => ({ ...prev, [agent.retellAgentId]: e.target.value }))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#004D3E]"
+                      />
+                      <p className="text-xs text-gray-400 mt-0.5">e.g. 1.5 = charge 1.5× Retell cost</p>
                     </div>
                   </div>
                 )}

@@ -29,6 +29,6 @@ export async function GET(request: NextRequest) {
     status: u.status,
     createdAt: u.createdAt,
     agentCount: u.assignedAgents.length,
-    agents: u.assignedAgents.map(ua => ({ name: ua.agent.name, agentId: ua.agent.retellAgentId, customPrice: ua.customPrice })),
+    agents: u.assignedAgents.map(ua => ({ name: ua.agent.name, agentId: ua.agent.retellAgentId, costMultiplier: ua.costMultiplier })),
   })));
 }

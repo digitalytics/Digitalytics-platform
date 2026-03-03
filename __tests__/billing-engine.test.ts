@@ -1,4 +1,4 @@
-import { buildLineItems, computeSubtotal, generateInvoiceNumber, isInvoiceOverdue, AgentInput } from '../lib/billing-engine';
+import { buildLineItems, computeSubtotal, generateInvoiceNumber, isInvoiceOverdue, computeAgentBillingPeriod, AgentInput } from '../lib/billing-engine';
 
 const PERIOD_START = new Date('2026-02-01T00:00:00.000Z');
 const PERIOD_END   = new Date('2026-02-28T23:59:59.999Z');
@@ -6,16 +6,17 @@ const ASSIGNED_BEFORE_PERIOD = new Date('2025-01-01T00:00:00.000Z');
 
 function makeAgent(overrides: Partial<AgentInput> = {}): AgentInput {
   return {
-    retellAgentId:         'agent-001',
-    agentName:             'Test Agent',
-    setupFee:              null,
-    setupFeeAlreadyBilled: false,
-    monthlyFee:            null,
-    customPrice:           null,
-    assignedAt:            ASSIGNED_BEFORE_PERIOD,
-    periodStart:           PERIOD_START,
-    periodEnd:             PERIOD_END,
-    usageMs:               0,
+    retellAgentId:          'agent-001',
+    agentName:              'Test Agent',
+    setupFee:               null,
+    setupFeeAlreadyBilled:  false,
+    monthlyFee:             null,
+    monthlyFeeAlreadyBilled: false,
+    costMultiplier:         null,
+    assignedAt:             ASSIGNED_BEFORE_PERIOD,
+    periodStart:            PERIOD_START,
+    periodEnd:              PERIOD_END,
+    usageCost:              0,
     ...overrides,
   };
 }
@@ -65,8 +66,8 @@ describe('buildLineItems — SETUP_FEE', () => {
 // buildLineItems — MONTHLY_FEE
 // ---------------------------------------------------------------------------
 describe('buildLineItems — MONTHLY_FEE', () => {
-  it('includes MONTHLY_FEE', () => {
-    const items = buildLineItems([makeAgent({ monthlyFee: 200 })]);
+  it('includes MONTHLY_FEE when not already billed', () => {
+    const items = buildLineItems([makeAgent({ monthlyFee: 200, monthlyFeeAlreadyBilled: false })]);
     expect(items.find(i => i.type === 'MONTHLY_FEE')).toMatchObject({ total: 200 });
   });
 
@@ -74,34 +75,54 @@ describe('buildLineItems — MONTHLY_FEE', () => {
     const items = buildLineItems([makeAgent({ monthlyFee: null })]);
     expect(items.find(i => i.type === 'MONTHLY_FEE')).toBeUndefined();
   });
+
+  it('excludes MONTHLY_FEE when already billed on a PAID invoice for the same period (supplement invoice)', () => {
+    const items = buildLineItems([makeAgent({ monthlyFee: 200, monthlyFeeAlreadyBilled: true })]);
+    expect(items.find(i => i.type === 'MONTHLY_FEE')).toBeUndefined();
+  });
+
+  it('supplement invoice contains only USAGE_FEE when monthly fee was already paid', () => {
+    const items = buildLineItems([makeAgent({
+      monthlyFee:             200,
+      monthlyFeeAlreadyBilled: true,
+      costMultiplier:         1.5,
+      usageCost:              0.1,   // 0.1 × 1.5 = 0.15
+    })]);
+    expect(items.find(i => i.type === 'MONTHLY_FEE')).toBeUndefined();
+    expect(items.find(i => i.type === 'USAGE_FEE')).toBeDefined();
+    expect(items.find(i => i.type === 'USAGE_FEE')?.total).toBeCloseTo(0.15, 2);
+  });
 });
 
 // ---------------------------------------------------------------------------
 // buildLineItems — USAGE_FEE
 // ---------------------------------------------------------------------------
 describe('buildLineItems — USAGE_FEE', () => {
-  it('includes USAGE_FEE when usageMs > 0', () => {
-    const items = buildLineItems([makeAgent({ customPrice: 0.15, usageMs: 120000 })]);
+  it('includes USAGE_FEE when usageCost > 0', () => {
+    const items = buildLineItems([makeAgent({ costMultiplier: 1.5, usageCost: 0.013417 })]);
     const fee = items.find(i => i.type === 'USAGE_FEE');
     expect(fee).toBeDefined();
-    expect(fee?.quantity).toBeCloseTo(2, 4);   // 2 minutes
-    expect(fee?.total).toBeCloseTo(0.30, 2);
+    expect(fee?.quantity).toBeCloseTo(0.013417, 6);   // quantity = Retell cost
+    expect(fee?.unitPrice).toBe(1.5);                 // unitPrice = multiplier
+    expect(fee?.total).toBeCloseTo(0.02, 2);          // 0.013417 × 1.5 = 0.020126 ≈ 0.02
   });
 
-  it('excludes USAGE_FEE when usageMs is 0', () => {
-    const items = buildLineItems([makeAgent({ customPrice: 0.15, usageMs: 0 })]);
+  it('excludes USAGE_FEE when usageCost is 0', () => {
+    const items = buildLineItems([makeAgent({ costMultiplier: 1.5, usageCost: 0 })]);
     expect(items.find(i => i.type === 'USAGE_FEE')).toBeUndefined();
   });
 
-  it('excludes USAGE_FEE when customPrice is null', () => {
-    const items = buildLineItems([makeAgent({ customPrice: null, usageMs: 60000 })]);
+  it('excludes USAGE_FEE when costMultiplier is null', () => {
+    const items = buildLineItems([makeAgent({ costMultiplier: null, usageCost: 0.05 })]);
     expect(items.find(i => i.type === 'USAGE_FEE')).toBeUndefined();
   });
 
-  it('description includes formatted minutes', () => {
-    const items = buildLineItems([makeAgent({ customPrice: 0.15, usageMs: 90000 })]);
+  it('description includes agent name but not raw cost or multiplier', () => {
+    const items = buildLineItems([makeAgent({ costMultiplier: 2.0, usageCost: 0.042167 })]);
     const fee = items.find(i => i.type === 'USAGE_FEE');
-    expect(fee?.description).toContain('1.5000 min');
+    expect(fee?.description).toContain('Test Agent');
+    expect(fee?.description).not.toContain('0.042167');
+    expect(fee?.description).not.toContain('2×');
   });
 });
 
@@ -112,10 +133,10 @@ describe('computeSubtotal', () => {
   it('sums all item totals to 2dp', () => {
     const items = buildLineItems([
       makeAgent({
-        setupFee:    500,
-        monthlyFee:  200,
-        customPrice: 0.15,
-        usageMs:     120000,
+        setupFee:       500,
+        monthlyFee:     200,
+        costMultiplier: 1.5,
+        usageCost:      0.2,
       }),
     ]);
     // 500 + 200 + 0.30 = 700.30
@@ -128,7 +149,7 @@ describe('computeSubtotal', () => {
 
   it('handles floating-point correctly', () => {
     // 0.1 + 0.2 in raw JS = 0.30000000000000004 — must round to 0.30
-    const items = buildLineItems([makeAgent({ customPrice: 0.1, usageMs: 120000 })]); // 2 min * 0.1 = 0.2
+    const items = buildLineItems([makeAgent({ costMultiplier: 2.0, usageCost: 0.1 })]); // 0.1 * 2.0 = 0.2
     expect(computeSubtotal(items)).toBe(0.20);
   });
 });
@@ -158,7 +179,7 @@ describe('generateInvoiceNumber', () => {
 // ---------------------------------------------------------------------------
 describe('Full scenario — 2nd Generate preserves correct subtotal', () => {
   it('subtotal includes setup fee when setupFeeAlreadyBilled=false (DRAFT recalculate path)', () => {
-    // Simulates: agent has setup fee $500, monthly $200, 2 min usage @ $0.15
+    // Simulates: agent has setup fee $500, monthly $200, usage cost $0.20 @ 1.5× multiplier
     // On 2nd Generate, route sets setupFeeAlreadyBilled=false because it excludes
     // the current draft from the alreadyBilled lookup.
     const items = buildLineItems([
@@ -166,8 +187,8 @@ describe('Full scenario — 2nd Generate preserves correct subtotal', () => {
         setupFee:              500,
         setupFeeAlreadyBilled: false,  // correct — current draft excluded from query
         monthlyFee:            200,
-        customPrice:           0.15,
-        usageMs:               120000, // 2 minutes
+        costMultiplier:        1.5,
+        usageCost:             0.2,    // 0.2 × 1.5 = 0.30
       }),
     ]);
     const subtotal = computeSubtotal(items);
@@ -182,8 +203,8 @@ describe('Full scenario — 2nd Generate preserves correct subtotal', () => {
         setupFee:              500,
         setupFeeAlreadyBilled: true,   // correct — prior month's invoice had it
         monthlyFee:            200,
-        customPrice:           0.15,
-        usageMs:               120000,
+        costMultiplier:        1.5,
+        usageCost:             0.2,    // 0.2 × 1.5 = 0.30
       }),
     ]);
     const subtotal = computeSubtotal(items);
@@ -229,12 +250,12 @@ describe('buildLineItems — two agents', () => {
     const agentA = makeAgent({
       retellAgentId: 'agent-A', agentName: 'Agent A',
       setupFee: 500, setupFeeAlreadyBilled: false,
-      monthlyFee: 200, customPrice: 0.15, usageMs: 120000, // 2 min → 0.30
+      monthlyFee: 200, costMultiplier: 1.5, usageCost: 0.2, // 0.2 × 1.5 = 0.30
     });
     const agentB = makeAgent({
       retellAgentId: 'agent-B', agentName: 'Agent B',
       setupFee: 300, setupFeeAlreadyBilled: false,
-      monthlyFee: 100, customPrice: 0.10, usageMs: 60000,  // 1 min → 0.10
+      monthlyFee: 100, costMultiplier: 1.0, usageCost: 0.1, // 0.1 × 1.0 = 0.10
     });
     const items = buildLineItems([agentA, agentB]);
     // 500 + 200 + 0.30 + 300 + 100 + 0.10 = 1100.40
@@ -244,38 +265,127 @@ describe('buildLineItems — two agents', () => {
 });
 
 // ---------------------------------------------------------------------------
-// isInvoiceOverdue — automated overdue detection (no admin needed)
+// computeAgentBillingPeriod — anniversary-based billing
+// ---------------------------------------------------------------------------
+describe('computeAgentBillingPeriod', () => {
+  function d(iso: string) { return new Date(iso); }
+
+  it('Jan 15 assigned, now Jan 20 → period Jan 15 – Feb 14', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-15T00:00:00.000Z'), d('2026-01-20T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-01-15T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-02-14T23:59:59.999Z'));
+  });
+
+  it('Jan 15 assigned, now Feb 15 (anniversary) → period Feb 15 – Mar 14', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-15T00:00:00.000Z'), d('2026-02-15T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-02-15T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-03-14T23:59:59.999Z'));
+  });
+
+  it('Jan 15 assigned, now Feb 14 (last day of period) → period Jan 15 – Feb 14', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-15T00:00:00.000Z'), d('2026-02-14T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-01-15T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-02-14T23:59:59.999Z'));
+  });
+
+  it('Jan 15 assigned, now Mar 1 → period Feb 15 – Mar 14', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-15T00:00:00.000Z'), d('2026-03-01T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-02-15T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-03-14T23:59:59.999Z'));
+  });
+
+  it('Mar 20 assigned, now Mar 20 (same day) → period Mar 20 – Apr 19', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-03-20T00:00:00.000Z'), d('2026-03-20T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-03-20T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-04-19T23:59:59.999Z'));
+  });
+
+  it('Jan 31 assigned, now Feb 15 → period Jan 31 – Feb 27 (capped)', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-31T00:00:00.000Z'), d('2026-02-15T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-01-31T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-02-27T23:59:59.999Z'));
+  });
+
+  it('Jan 31 assigned, now Mar 15 → period Feb 28 – Mar 30 (capped)', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-01-31T00:00:00.000Z'), d('2026-03-15T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-02-28T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-03-30T23:59:59.999Z'));
+  });
+
+  it('Mar 31 assigned, now Apr 15 → period Mar 31 – Apr 29 (capped)', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2026-03-31T00:00:00.000Z'), d('2026-04-15T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-03-31T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-04-29T23:59:59.999Z'));
+  });
+
+  it('Jan 1 2025 assigned, now Jan 5 2026 → period Jan 1 2026 – Jan 31 2026', () => {
+    const { periodStart, periodEnd } = computeAgentBillingPeriod(
+      d('2025-01-01T00:00:00.000Z'), d('2026-01-05T00:00:00.000Z')
+    );
+    expect(periodStart).toEqual(d('2026-01-01T00:00:00.000Z'));
+    expect(periodEnd).toEqual(d('2026-01-31T23:59:59.999Z'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isInvoiceOverdue — 8-day grace period from period start (due on day 8)
 // ---------------------------------------------------------------------------
 describe('isInvoiceOverdue', () => {
-  const PAST_END   = new Date('2026-01-31T23:59:59.999Z'); // period already closed
-  const FUTURE_END = new Date('2099-12-31T23:59:59.999Z'); // period still open
-  const NOW        = new Date('2026-02-15T12:00:00.000Z');
+  const PERIOD_START_JAN = new Date('2026-01-01T00:00:00.000Z');
 
-  it('returns true when DRAFT and billing period has ended', () => {
-    expect(isInvoiceOverdue('DRAFT', PAST_END, NOW)).toBe(true);
+  it('returns false when DRAFT on day 7 (inside grace period)', () => {
+    const now = new Date('2026-01-08T00:00:00.000Z'); // Jan 1 + 7 days
+    expect(isInvoiceOverdue('DRAFT', PERIOD_START_JAN, now)).toBe(false);
   });
 
-  it('returns true when PENDING and billing period has ended', () => {
-    expect(isInvoiceOverdue('PENDING', PAST_END, NOW)).toBe(true);
+  it('returns true when DRAFT on day 8 exactly (overdue on day 8)', () => {
+    const now = new Date('2026-01-09T00:00:00.000Z'); // Jan 1 + 8 days
+    expect(isInvoiceOverdue('DRAFT', PERIOD_START_JAN, now)).toBe(true);
   });
 
-  it('returns false when PAID — already settled', () => {
-    expect(isInvoiceOverdue('PAID', PAST_END, NOW)).toBe(false);
+  it('returns true when DRAFT on day 14 (past grace period)', () => {
+    const now = new Date('2026-01-15T00:00:00.000Z');
+    expect(isInvoiceOverdue('DRAFT', PERIOD_START_JAN, now)).toBe(true);
+  });
+
+  it('returns true when PENDING on day 8 (payment in-flight, still overdue)', () => {
+    const now = new Date('2026-01-09T00:00:00.000Z');
+    expect(isInvoiceOverdue('PENDING', PERIOD_START_JAN, now)).toBe(true);
+  });
+
+  it('returns false when PAID on day 8 — already settled', () => {
+    const now = new Date('2026-01-09T00:00:00.000Z');
+    expect(isInvoiceOverdue('PAID', PERIOD_START_JAN, now)).toBe(false);
   });
 
   it('returns false when already OVERDUE — no double-transition', () => {
-    expect(isInvoiceOverdue('OVERDUE', PAST_END, NOW)).toBe(false);
+    const now = new Date('2026-01-09T00:00:00.000Z');
+    expect(isInvoiceOverdue('OVERDUE', PERIOD_START_JAN, now)).toBe(false);
   });
 
-  it('returns false when CANCELLED', () => {
-    expect(isInvoiceOverdue('CANCELLED', PAST_END, NOW)).toBe(false);
+  it('returns false when CANCELLED on day 8', () => {
+    const now = new Date('2026-01-09T00:00:00.000Z');
+    expect(isInvoiceOverdue('CANCELLED', PERIOD_START_JAN, now)).toBe(false);
   });
 
-  it('returns false when period has NOT ended yet', () => {
-    expect(isInvoiceOverdue('DRAFT', FUTURE_END, NOW)).toBe(false);
-  });
-
-  it('returns false when now equals periodEnd exactly (boundary — not yet overdue)', () => {
-    expect(isInvoiceOverdue('DRAFT', NOW, NOW)).toBe(false);
+  it('returns false when DRAFT on day 0 (same day as period start)', () => {
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    expect(isInvoiceOverdue('DRAFT', PERIOD_START_JAN, now)).toBe(false);
   });
 });

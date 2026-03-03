@@ -106,7 +106,7 @@ async function AdminUsersPage({ searchParams }) {
             agents: u.assignedAgents.map((ua)=>({
                     name: ua.agent.name,
                     retellAgentId: ua.agent.retellAgentId,
-                    customPrice: ua.customPrice ? Number(ua.customPrice) : null,
+                    costMultiplier: ua.costMultiplier ? Number(ua.costMultiplier) : null,
                     setupFee: ua.setupFee ? Number(ua.setupFee) : null,
                     monthlyFee: ua.monthlyFee ? Number(ua.monthlyFee) : null,
                     setupFeePaid: ua.setupFeePaid

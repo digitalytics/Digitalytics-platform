@@ -132,6 +132,7 @@ export function AgentsPageClient({ agents: initialAgents }: { agents: Agent[] })
             </Button>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -193,6 +194,7 @@ export function AgentsPageClient({ agents: initialAgents }: { agents: Agent[] })
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

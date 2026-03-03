@@ -14,11 +14,11 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen bg-gray-50">
       <AdminSidebar user={session.user} />
-      <div className="pl-60">
-        <div className="px-3 py-2 bg-[#004D3E]/5 border-b border-[#004D3E]/10">
-          <p className="text-xs text-[#004D3E] font-medium pl-5">Admin Panel</p>
+      <div className="md:pl-60">
+        <div className="pl-14 md:pl-0 px-3 py-2 bg-[#004D3E]/5 border-b border-[#004D3E]/10">
+          <p className="text-xs text-[#004D3E] font-medium md:pl-5">Admin Panel</p>
         </div>
-        <main className="p-8">{children}</main>
+        <main className="p-4 md:p-8">{children}</main>
       </div>
     </div>
   );

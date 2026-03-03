@@ -7,6 +7,8 @@ import { Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDateTime, formatDuration, getStatusColor, getSentimentColor } from '@/lib/utils';
+import { CallCostBreakdown } from '@/components/dashboard/call-cost-breakdown';
+import { formatUserCostDisplay } from '@/lib/call-cost-utils';
 
 interface Call {
   callId: string;
@@ -17,6 +19,8 @@ interface Call {
   durationMs: number | null;
   callSuccessful: boolean | null;
   userSentiment: string | null;
+  userCost: number | null;
+  costDetails: unknown | null;
 }
 
 interface Agent {
@@ -131,6 +135,7 @@ export function CallsPageClient({ initialCalls, totalCalls, page, limit, agents,
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Outcome</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Sentiment</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Cost</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -169,6 +174,18 @@ export function CallsPageClient({ initialCalls, totalCalls, page, limit, agents,
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${getSentimentColor(call.userSentiment)}`}>
                           {call.userSentiment}
                         </span>
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {call.userCost != null ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-gray-700 font-medium tabular-nums">
+                            {formatUserCostDisplay(call.userCost)}
+                          </span>
+                          <CallCostBreakdown userCost={call.userCost} costDetails={call.costDetails} durationMs={call.durationMs} />
+                        </div>
                       ) : (
                         <span className="text-gray-300 text-xs">—</span>
                       )}

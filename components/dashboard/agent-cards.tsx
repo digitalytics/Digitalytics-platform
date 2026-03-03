@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Phone, Calendar, Activity, DollarSign } from 'lucide-react';
+import { Phone, Calendar, Activity } from 'lucide-react';
 import { staggerContainer, cardHover } from '@/lib/animations';
 import { Badge } from '@/components/ui/badge';
 import { CopyButton } from '@/components/dashboard/copy-button';
@@ -17,7 +17,7 @@ interface Agent {
   phoneNumber: string | null;
   callCount: number;
   lastCallAt: Date | null;
-  customPrice: number | null;
+  costMultiplier: number | null;
 }
 
 export function AgentCards({ agents }: { agents: Agent[] }) {
@@ -58,13 +58,6 @@ export function AgentCards({ agents }: { agents: Agent[] }) {
                 <Phone size={11} className="text-[#004D3E]" />
                 <span className="font-mono">{agent.phoneNumber}</span>
                 <CopyButton text={agent.phoneNumber} />
-              </div>
-            )}
-
-            {agent.customPrice !== null && (
-              <div className="flex items-center gap-1 text-xs text-gray-500 mb-3 bg-gray-50 rounded-lg px-2.5 py-1.5">
-                <DollarSign size={11} className="text-[#004D3E]" />
-                <span>${agent.customPrice.toFixed(4)} / min</span>
               </div>
             )}
 
