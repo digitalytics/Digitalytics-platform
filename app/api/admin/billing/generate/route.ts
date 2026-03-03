@@ -10,18 +10,18 @@ export async function POST() {
   }
 
   // Current billing period: first → last day of current month
-  const now         = new Date();
+  const now = new Date();
   const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const periodEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
   // All active non-admin users with their agent assignments
   const users = await prisma.user.findMany({
-    where:   { role: 'USER', status: 'ACTIVE' },
+    where: { role: 'USER', status: 'ACTIVE' },
     include: { assignedAgents: { include: { agent: true } } },
   });
 
   let generated = 0;
-  let skipped   = 0;
+  let skipped = 0;
   const errors: string[] = [];
 
   for (const user of users) {
@@ -49,42 +49,58 @@ export async function POST() {
           // SETUP_FEE line item doesn't falsely mark it as "already billed".
           const setupFeeAlreadyBilled = ua.setupFee
             ? !!(await prisma.invoiceLineItem.findFirst({
-                where: {
-                  type:    'SETUP_FEE',
-                  agentId: agentRetellId,
-                  invoice: {
-                    userId: user.id,
-                    status: { not: 'CANCELLED' },
-                    ...(existing ? { id: { not: existing.id } } : {}),
-                  },
+              where: {
+                type: 'SETUP_FEE',
+                agentId: agentRetellId,
+                invoice: {
+                  userId: user.id,
+                  status: { not: 'CANCELLED' },
+                  ...(existing ? { id: { not: existing.id } } : {}),
                 },
-              }))
+              },
+            }))
+            : false;
+
+          const monthlyFeeAlreadyBilled = ua.monthlyFee
+            ? !!(await prisma.invoiceLineItem.findFirst({
+              where: {
+                type: 'MONTHLY_FEE',
+                agentId: agentRetellId,
+                invoice: {
+                  userId: user.id,
+                  status: { not: 'CANCELLED' },
+                  periodStart,
+                  ...(existing ? { id: { not: existing.id } } : {}),
+                },
+              },
+            }))
             : false;
 
           // Usage: only calls from max(assignedAt, periodStart) → periodEnd
           const effectiveStart = ua.assignedAt > periodStart ? ua.assignedAt : periodStart;
           const usage = ua.costMultiplier
             ? await prisma.call.aggregate({
-                where: {
-                  agentId:        agentRetellId,
-                  startTimestamp: { gte: effectiveStart, lte: periodEnd },
-                  totalCost:      { not: null },
-                },
-                _sum: { totalCost: true },
-              })
+              where: {
+                agentId: agentRetellId,
+                startTimestamp: { gte: effectiveStart, lte: periodEnd },
+                totalCost: { not: null },
+              },
+              _sum: { totalCost: true },
+            })
             : null;
 
           return {
-            retellAgentId:        agentRetellId,
-            agentName:            ua.agent.name,
-            setupFee:             ua.setupFee       ? Number(ua.setupFee)       : null,
+            retellAgentId: agentRetellId,
+            agentName: ua.agent.name,
+            setupFee: ua.setupFee ? Number(ua.setupFee) : null,
             setupFeeAlreadyBilled,
-            monthlyFee:           ua.monthlyFee     ? Number(ua.monthlyFee)     : null,
-            costMultiplier:       ua.costMultiplier ? Number(ua.costMultiplier) : null,
-            assignedAt:           ua.assignedAt,
+            monthlyFee: ua.monthlyFee ? Number(ua.monthlyFee) : null,
+            monthlyFeeAlreadyBilled,
+            costMultiplier: ua.costMultiplier ? Number(ua.costMultiplier) : null,
+            assignedAt: ua.assignedAt,
             periodStart,
             periodEnd,
-            usageCost:            Number(usage?._sum.totalCost ?? 0),
+            usageCost: Number(usage?._sum.totalCost ?? 0),
           };
         })
       );
@@ -112,21 +128,21 @@ export async function POST() {
           if (usageItems.length > 0) {
             await tx.invoiceLineItem.createMany({
               data: usageItems.map(item => ({
-                invoiceId:   existing.id,
-                type:        item.type,
-                agentId:     item.agentId,
-                agentName:   item.agentName,
+                invoiceId: existing.id,
+                type: item.type,
+                agentId: item.agentId,
+                agentName: item.agentName,
                 description: item.description,
-                quantity:    item.quantity,
-                unitPrice:   item.unitPrice,
-                total:       item.total,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                total: item.total,
               })),
             });
           }
 
           // Recompute total from ALL line items actually on the invoice (source of truth)
           const allItems = await tx.invoiceLineItem.findMany({
-            where:  { invoiceId: existing.id },
+            where: { invoiceId: existing.id },
             select: { total: true },
           });
           const newSubtotal = Math.round(
@@ -135,18 +151,18 @@ export async function POST() {
 
           await tx.invoice.update({
             where: { id: existing.id },
-            data:  { subtotal: newSubtotal, total: newSubtotal },
+            data: { subtotal: newSubtotal, total: newSubtotal },
           });
         });
       } else {
         // ── No active invoice → create fresh ──
-        const yyyymm     = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
         const baseNumber = `INV-${yyyymm}-${user.id.slice(0, 6).toUpperCase()}`;
 
         // Guard against collision with cancelled invoices that hold the base number
         const takenNumbers = new Set(
           (await prisma.invoice.findMany({
-            where:  { invoiceNumber: { startsWith: baseNumber } },
+            where: { invoiceNumber: { startsWith: baseNumber } },
             select: { invoiceNumber: true },
           })).map(r => r.invoiceNumber)
         );
@@ -156,26 +172,26 @@ export async function POST() {
           const invoice = await tx.invoice.create({
             data: {
               invoiceNumber,
-              userId:          user.id,
+              userId: user.id,
               periodStart,
               periodEnd,
-              status:          'DRAFT',
+              status: 'DRAFT',
               subtotal,
-              total:           subtotal,
+              total: subtotal,
               isAutoGenerated: false,
             },
           });
 
           await tx.invoiceLineItem.createMany({
             data: lineItems.map(item => ({
-              invoiceId:   invoice.id,
-              type:        item.type,
-              agentId:     item.agentId,
-              agentName:   item.agentName,
+              invoiceId: invoice.id,
+              type: item.type,
+              agentId: item.agentId,
+              agentName: item.agentName,
               description: item.description,
-              quantity:    item.quantity,
-              unitPrice:   item.unitPrice,
-              total:       item.total,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              total: item.total,
             })),
           });
           // NOTE: setupFeePaid is NOT set here — only set when invoice is marked PAID
