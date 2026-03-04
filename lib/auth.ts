@@ -38,6 +38,10 @@ const authConfig: NextAuthConfig = {
         );
         if (!passwordMatch) return null;
 
+        if (!user.emailVerified) {
+          throw new Error('UNVERIFIED');
+        }
+
         if (user.status === UserStatus.PENDING) {
           throw new Error('PENDING');
         }

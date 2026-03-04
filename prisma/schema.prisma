@@ -81,8 +81,12 @@ model User {
   image            String?
   role             Role       @default(USER)
   status           UserStatus @default(PENDING)
-  stripeCustomerId String?    @map("stripe_customer_id") // set when Stripe customer is created
-  createdAt        DateTime   @default(now()) @map("created_at")
+  stripeCustomerId            String?    @map("stripe_customer_id") // set when Stripe customer is created
+  emailVerificationToken      String?    @map("email_verification_token")
+  emailVerificationExpiry     DateTime?  @map("email_verification_expiry")
+  passwordResetToken          String?    @map("password_reset_token")
+  passwordResetExpiry         DateTime?  @map("password_reset_expiry")
+  createdAt                   DateTime   @default(now()) @map("created_at")
   updatedAt        DateTime   @updatedAt @map("updated_at")
 
   // NextAuth relations

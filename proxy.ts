@@ -9,7 +9,7 @@ const handler: ProxyHandler = (req) => {
   const session = req.auth;
 
   // Allow public routes
-  const publicRoutes = ['/login', '/register', '/pending'];
+  const publicRoutes = ['/login', '/register', '/pending', '/verify-email', '/forgot-password', '/reset-password'];
   if (publicRoutes.some(r => pathname.startsWith(r))) {
     if (session?.user && (session.user as Record<string, unknown>).status === 'ACTIVE') {
       const role = (session.user as Record<string, unknown>).role;

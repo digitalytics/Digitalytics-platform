@@ -31,6 +31,8 @@ function LoginPageInner() {
       ? 'Your account is awaiting admin approval.'
       : errorParam === 'INACTIVE'
       ? 'Your account has been deactivated. Contact admin.'
+      : errorParam === 'UNVERIFIED'
+      ? 'Please verify your email before signing in.'
       : null
   );
 
@@ -55,6 +57,8 @@ function LoginPageInner() {
           setError('Your account is awaiting admin approval.');
         } else if (result.error === 'INACTIVE') {
           setError('Your account has been deactivated. Contact your admin.');
+        } else if (result.error === 'UNVERIFIED') {
+          setError('Please verify your email before signing in.');
         } else {
           setError('Invalid email or password.');
         }
@@ -141,6 +145,11 @@ function LoginPageInner() {
             {errors.password && (
               <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>
             )}
+            <div className="flex justify-end mt-1">
+              <Link href="/forgot-password" className="text-sm text-[#004D3E] hover:underline">
+                Forgot password?
+              </Link>
+            </div>
           </div>
 
           <button

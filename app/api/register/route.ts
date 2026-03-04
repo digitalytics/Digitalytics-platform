@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { UserStatus, Role } from '@prisma/client';
+import { generateOtp, hashOtp } from '@/lib/otp';
+import { sendVerificationEmail } from '@/lib/email';
 
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -33,6 +35,9 @@ export async function POST(request: Request) {
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
+    const otp = generateOtp();
+    const otpHash = await hashOtp(otp);
+    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     await prisma.user.create({
       data: {
@@ -41,11 +46,20 @@ export async function POST(request: Request) {
         passwordHash,
         role: Role.USER,
         status: UserStatus.PENDING,
+        emailVerificationToken: otpHash,
+        emailVerificationExpiry: expiry,
       },
     });
 
+    // Send email — best effort. If it fails the user can resend from /verify-email
+    try {
+      await sendVerificationEmail(email, otp, name);
+    } catch (emailErr) {
+      console.error('[register] Failed to send verification email:', emailErr);
+    }
+
     return NextResponse.json(
-      { message: 'Account created. Please wait for admin approval.' },
+      { message: 'Account created. Please verify your email.' },
       { status: 201 }
     );
   } catch {

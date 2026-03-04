@@ -1,13 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { Eye, EyeOff, Loader2, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { signIn } from 'next-auth/react';
 import { fadeInUp, staggerContainer } from '@/lib/animations';
 
@@ -26,11 +25,9 @@ const registerSchema = z
 type RegisterForm = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const {
@@ -56,37 +53,12 @@ export default function RegisterPage() {
       if (!res.ok) {
         setError(json.error || 'Registration failed');
       } else {
-        setSuccess(true);
+        window.location.href = `/verify-email?email=${encodeURIComponent(data.email)}`;
       }
     } finally {
       setIsLoading(false);
     }
   };
-
-  if (success) {
-    return (
-      <motion.div
-        className="w-full max-w-md"
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-      >
-        <div className="bg-white rounded-2xl shadow-2xl p-10 text-center">
-          <CheckCircle className="w-14 h-14 text-green-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Request Submitted!</h2>
-          <p className="text-gray-500 mb-6">
-            Your account has been created and is pending admin approval. You&apos;ll
-            receive access once an admin reviews your request.
-          </p>
-          <button
-            onClick={() => router.push('/login')}
-            className="w-full bg-[#004D3E] hover:bg-[#0a5f4a] text-white font-medium py-2.5 rounded-lg transition"
-          >
-            Back to Sign In
-          </button>
-        </div>
-      </motion.div>
-    );
-  }
 
   return (
     <motion.div
